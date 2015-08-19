@@ -14,21 +14,23 @@
 //G - 6 - velocity
 //H - 7 - pixel value
 
-//This function will load the tracking data from an Excel Workbook with sheets named "Movie n"
-Function LoadMigration(moviemax,fname,pref)
-	Variable moviemax
-	String fname, pref
+//This function will load the tracking data from an Excel Workbook
+
+Function LoadMigration(pref)
+	String pref
 	//call example LoadMigration(20,"control.xlsx","ctrl_")
 	
-	String file="Macintosh HD:Users:steve:Documents:Lab People:Gabrielle Larocque:Migration Analysis:Expt1:" + fname
-	
-	string sheet,prefix
+	String sheet,prefix
 	Variable i
 	
+	XLLoadWave/J=1
+	Variable moviemax=ItemsInList(S_value)
+	NewPath/O/Q path1, S_path
+	
 	For(i=0; i<moviemax; i+=1)
-		sheet="movie " + num2str(i+1)
-		prefix=replaceString("movie ",sheet,pref) + "_"
-		XLLoadWave/S=sheet/R=(A1,H1000)/O/K=0/N=$prefix file
+		sheet=StringFromList(i,S_Value)
+		prefix=pref + num2str(i)
+		XLLoadWave/S=sheet/R=(A1,H1000)/O/K=0/N=$prefix/P=path1 S_fileName
 	Endfor
 End
 
