@@ -15,8 +15,145 @@
 //G - 6 - velocity
 //H - 7 - pixel value
 
-//This function will load the tracking data from an Excel Workbook
+//Define colours
+StrConstant SRON_1 = "0x4477aa;"
+StrConstant SRON_2 = "0x4477aa; 0xcc6677;"
+StrConstant SRON_3 = "0x4477aa; 0xddcc77; 0xcc6677;"
+StrConstant SRON_4 = "0x4477aa; 0x117733; 0xddcc77; 0xcc6677;"
+StrConstant SRON_5 = "0x332288; 0x88ccee; 0x117733; 0xddcc77; 0xcc6677;"
+StrConstant SRON_6 = "0x332288; 0x88ccee; 0x117733; 0xddcc77; 0xcc6677; 0xaa4499;"
+StrConstant SRON_7 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0xddcc77; 0xcc6677; 0xaa4499;"
+StrConstant SRON_8 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0xcc6677; 0xaa4499;"
+StrConstant SRON_9 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0xcc6677; 0x882255; 0xaa4499;"
+StrConstant SRON_10 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0x882255; 0xaa4499;"
+StrConstant SRON_11 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0x882255; 0xaa4499;"
+StrConstant SRON_12 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0xaa4466; 0x882255; 0xaa4499;"
 
+Function hexcolor_red(hex)
+    Variable hex
+    return byte_value(hex, 2) * 2^8
+End
+
+Function hexcolor_green(hex)
+    Variable hex
+    return byte_value(hex, 1) * 2^8
+End
+
+Function hexcolor_blue(hex)
+    Variable hex
+    return byte_value(hex, 0) * 2^8
+End
+
+Static Function byte_value(data, byte)
+    Variable data
+    Variable byte
+    return (data & (0xFF * (2^(8*byte)))) / (2^(8*byte))
+End
+
+
+//Loads the data and performs migration analysis
+Function Migrate(cond)
+	Variable cond //how many conditions?
+	//call example Migrate(2)
+	
+	//kill all windows and waves
+	string fulllist = WinList("*", ";","WIN:3")
+	string name
+	variable i
+ 
+	for(i=0; i<ItemsInList(fulllist); i +=1)
+		name= StringFromList(i, fulllist)
+		DoWindow/K $name		
+	endfor
+	
+	KillWaves/A/Z
+	
+	//Pick colours from SRON palettes
+	String pal
+	if(cond==1)
+		pal = SRON_1
+	elseif(cond==2)
+		pal = SRON_2
+	elseif(cond==3)
+		pal = SRON_3
+	elseif(cond==4)
+		pal = SRON_4
+	elseif(cond==5)
+		pal = SRON_5
+	else
+		pal = SRON_12
+	endif
+
+	Make/O/T/N=(cond) sum_Label
+	Make/O/N=(cond) sum_MeanSpeed
+	Make/O/N=(cond) sum_SemSpeed
+	Make/O/N=(cond) sum_NSpeed
+	
+	String pref,lab
+	Variable color
+	Variable /G gR,gG,gB
+	
+	For(i=1; i<cond+1; i+=1)
+		Prompt pref, "Experimental condition e.g. \"ctrl_\", \"tacc3_\". Quotes + underscore required"
+		DoPrompt "Describe conditions", pref
+		
+		if(V_Flag)
+      			Abort "The user pressed Cancel"
+		endif
+		
+		lab=ReplaceString("_",pref,"")
+		sum_Label[i-1]=lab
+		
+		//specify colours
+		if(cond<6)
+			color=str2num(StringFromList(i-1,pal))
+			gR=hexcolor_red(color)
+			gG=hexcolor_green(color)
+			gB=hexcolor_blue(color)
+		else
+			color=str2num(StringFromList(round((i-1)/12),pal))
+			gR=hexcolor_red(color)
+			gG=hexcolor_green(color)
+			gB=hexcolor_blue(color)
+		endif
+		LoadMigration(pref)
+		MakeTracks(pref)
+	EndFor
+	
+	//average data	
+	String wList, wName, newName
+	Variable nTracks,last,j
+	
+	For(i=0; i<cond; i+=1) //loop through conditions
+		pref=sum_Label[i] + "_"
+		wList=WaveList("cd_" + pref + "*", ";","")
+		nTracks=ItemsInList(wList)
+		newName="Sum_Speed_" + ReplaceString("_",pref,"")
+		Make/O/N=(nTracks) $newName
+		Wave w0=$newName
+		For(j=0; j<nTracks; j+=1)
+			wName=StringFromList(j,wList)
+			Wave w1=$wName
+			last=numpnts(w1)
+			w0[j]=w1[last-1]/((last-1)*20)	//scaling
+		Endfor
+		WaveStats/Q w0
+		sum_MeanSpeed[i]=V_avg
+		sum_SemSpeed[i]=V_sem
+		sum_NSpeed[i]=V_npnts
+	Endfor
+	DoWindow /K AveSpeed
+	Edit /N=AveSpeed sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
+	DoWindow /K SpeedPlot
+	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
+	Label left "Speed (µm/min)";DelayUpdate
+	SetAxis/A/N=1/E=1 left
+	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
+	ModifyGraph rgb=(0,0,0)
+	Execute "TileWindows/O=1/C"
+End
+
+//This function will load the tracking data from an Excel Workbook
 Function LoadMigration(pref)
 	String pref
 	//call example LoadMigration("ctrl_")
@@ -43,8 +180,11 @@ End
 Function MakeTracks(pref)
 	String pref
 	
-	String srch0= pref + "*"		//find all matrices
-	String wList0=WaveList(srch0,";","")
+	NVAR cR=gR
+	NVAR cG=gG
+	NVAR cB=gB
+	
+	String wList0=WaveList(pref + "*",";","") //find all matrices
 
 	Variable nWaves=ItemsInList(wList0)
 	
@@ -64,7 +204,7 @@ Function MakeTracks(pref)
 		Duplicate/O/R=[][1] m0, w1	//cell number
 		Redimension /N=-1 w0, w1
 		nTrack=WaveMax(w1)	//find maximum track no.
-		For(j=1; j<(nTrack+1); j+=1)	//index is 1-based
+		For(j=1; j<(nTrack+2); j+=1)	//index is 1-based, plus 2 was needed.
 			newName = "cd_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 $newName
 			Wave w2=$newName
@@ -79,13 +219,16 @@ Function MakeTracks(pref)
 			AppendtoGraph /W=$plotName $newName
 			Endif
 		EndFor
+		DoWindow /F $plotName
 	Endfor
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
 	avlist=Wavelist("cd*",";","WIN:"+ plotName)
-	avname="W_Ave" + pref
+	avname="W_Ave_tk_" + ReplaceString("_",pref,"")
 	errname=ReplaceString("Ave", avname, "Err")
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
+	Label left "Cumulative distance (µm)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -129,11 +272,48 @@ Function MakeTracks(pref)
 		EndFor
 	Endfor
 	DoWindow /F $plotName
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
 	SetAxis left -250,250;DelayUpdate
 	SetAxis bottom -250,250;DelayUpdate
 	ModifyGraph width={Plan,1,bottom,left};DelayUpdate
 	ModifyGraph mirror=1;DelayUpdate
 	ModifyGraph grid=1
+	
+	//calculate d/D directionality ratio
+	plotName=pref + "dDplot"
+	DoWindow /K $plotName	//set up plot
+	Display /N=$plotName
+	
+	String wName0,wName1
+	Variable len
+	wList0=WaveList("tk_" + pref + "*", ";","")
+	nWaves=ItemsInList(wList0)
+	
+	For(i=0; i<nWaves; i+=1)
+		wName0=StringFromList(i,wList0)			//tk wave
+		wName1=ReplaceString("tk",wName0,"cd")	//cd wave
+		Wave w0=$wName0
+		Wave w1=$wName1
+		newName=ReplaceString("tk",wName0,"dD")
+		Duplicate/O w1 $newName
+		Wave w2=$newName
+		len=numpnts(w2)
+		w2=1
+		For(j=1; j<len; j+=1)
+			w2[j]= sqrt(w0[j][0]^2 + w0[j][1]^2)/w1[j]
+		EndFor
+		AppendtoGraph /W=$plotName w2
+	Endfor
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
+	avlist=Wavelist("dD*",";","WIN:"+ plotName)
+	avname="W_Ave_dD_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
+	AppendToGraph /W=$plotName $avname
+	DoWindow /F $plotName
+	Label left "Directionality ratio (d/D)"
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 End
 
 //This function will load the intensity data from an Excel Workbook **Updated but Untested**
