@@ -1,10 +1,13 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #include <Waves Average>
 
-//This will load all sheets of migration data from a specified excel file
-//NOTE path is fixed - this means you need to edit it to read the excel files
-//NOTE no headers in Excel file
-//takes columns A-H max of 1000 rows
+//LoadMigration contains 3 procedures to analyse cell migration in IgorPro
+//Use ImageJ to track the cells. Outputs from tracking are saved in sheets in an Excel Workbook, 1 per condition
+//Execute Migrate(n) to specify the load of n experimental conditions
+//This function will trigger the load and the analysis of cell migration via two functions
+//LoadMigration() - will load all sheets of migration data from a specified excel file
+//MakeTracks() - does the analysis
+//NOTE no headers in Excel file keep data to columns A-H, max of 1000 rows
 //columns are
 //A - 0 - ImageJ row
 //B - 1 - Track No
@@ -15,6 +18,7 @@
 //G - 6 - velocity
 //H - 7 - pixel value
 
+//Colours are taken from Paul Tol SRON stylesheet
 //Define colours
 StrConstant SRON_1 = "0x4477aa;"
 StrConstant SRON_2 = "0x4477aa; 0xcc6677;"
