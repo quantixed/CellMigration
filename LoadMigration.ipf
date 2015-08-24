@@ -84,6 +84,7 @@ Function Migrate(cond)
 		pal = SRON_12
 	endif
 
+	Make/O/N=(cond,3) colorwave
 	Make/O/T/N=(cond) sum_Label
 	Make/O/N=(cond) sum_MeanSpeed
 	Make/O/N=(cond) sum_SemSpeed
@@ -92,6 +93,11 @@ Function Migrate(cond)
 	String pref,lab
 	Variable color
 	Variable /G gR,gG,gB
+	
+	DoWindow /K dDPlot
+	Display /N=dDPlot
+	DoWindow /K MSDPlot
+	Display /N=MSDPlot
 	
 	For(i=1; i<cond+1; i+=1)
 		Prompt pref, "Experimental condition e.g. \"ctrl_\", \"tacc3_\". Quotes + underscore required"
@@ -116,15 +122,32 @@ Function Migrate(cond)
 			gG=hexcolor_green(color)
 			gB=hexcolor_blue(color)
 		endif
+		colorwave[i-1][0]=gR //offset by one because cond is 1-based
+		colorwave[i-1][1]=gG
+		colorwave[i-1][2]=gB
+		//run other procedures
 		LoadMigration(pref)
 		MakeTracks(pref)
 	EndFor
 	
+	//Tidy up summary windows
+	DoWindow /F dDPlot
+	Label left "Directionality ratio (d/D)"
+	Label bottom "Time (min)"
+	
+	DoWindow /F MSDPlot
+	ModifyGraph log=1
+	SetAxis/A/N=1 left
+	String wName=StringFromList(0,WaveList("W_Ave*",";","WIN:"))
+	SetAxis bottom 20,((numpnts($wName)*20)/2)
+	Label left "MSD"
+	Label bottom "Time (min)"
+	
 	//average data	
-	String wList, wName, newName
+	String wList, newName
 	Variable nTracks,last,j
 	
-	For(i=0; i<cond; i+=1) //loop through conditions
+	For(i=0; i<cond; i+=1) //loop through conditions 0-based
 		pref=sum_Label[i] + "_"
 		wList=WaveList("cd_" + pref + "*", ";","")
 		nTracks=ItemsInList(wList)
@@ -142,16 +165,22 @@ Function Migrate(cond)
 		sum_SemSpeed[i]=V_sem
 		sum_NSpeed[i]=V_npnts
 	Endfor
-	DoWindow /K AveSpeed
-	Edit /N=AveSpeed sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
+	DoWindow /K SpeedTable
+	Edit /N=SpeedTable sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
 	DoWindow /K SpeedPlot
 	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
 	Label left "Speed (µm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
-	ModifyGraph rgb=(0,0,0)
-//Build windows to compare averages of everything here - to do
-	Execute "TileWindows/O=1/C"
+	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
+	ModifyGraph hbFill=2
+	AppendToGraph/R sum_MeanSpeed vs sum_Label
+	SetAxis/A/N=1/E=1 right
+	ModifyGraph hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
+	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
+	ErrorBars sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
+
+	Execute "TileWindows/O=3/C"
 End
 
 //This function will load the tracking data from an Excel Workbook
@@ -313,6 +342,7 @@ Function MakeTracks(pref)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
 	Label left "Directionality ratio (d/D)"
+	Label bottom "Time (min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -359,7 +389,26 @@ Function MakeTracks(pref)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
 	ModifyGraph log=1
+	SetAxis/A/N=1 left
+	len=numpnts($avName)*20
+	SetAxis bottom 20,(len/2)
 	Label left "MSD"
+	Label bottom "Time (min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	//Plot these summary windows at the end
+	avname="W_Ave_dD_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	AppendToGraph /W=dDPlot $avname
+	DoWindow /F dDPlot
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+			
+	avname="W_Ave_MSD_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	AppendToGraph /W=MSDPlot $avname
+	DoWindow /F MSDPlot
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 End
