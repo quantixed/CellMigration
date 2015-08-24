@@ -94,6 +94,8 @@ Function Migrate(cond)
 	Variable color
 	Variable /G gR,gG,gB
 	
+	DoWindow /K cdPlot
+	Display /N=cdPlot
 	DoWindow /K dDPlot
 	Display /N=dDPlot
 	DoWindow /K MSDPlot
@@ -131,6 +133,11 @@ Function Migrate(cond)
 	EndFor
 	
 	//Tidy up summary windows
+	DoWindow /F cdPlot
+	SetAxis/A/N=1 left
+	Label left "Cumulative distance (µm)"
+	Label bottom "Time (min)"
+	
 	DoWindow /F dDPlot
 	Label left "Directionality ratio (d/D)"
 	Label bottom "Time (min)"
@@ -253,7 +260,7 @@ Function MakeTracks(pref)
 	Endfor
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
 	avlist=Wavelist("cd*",";","WIN:"+ plotName)
-	avname="W_Ave_tk_" + ReplaceString("_",pref,"")
+	avname="W_Ave_cd_" + ReplaceString("_",pref,"")
 	errname=ReplaceString("Ave", avname, "Err")
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
@@ -398,6 +405,13 @@ Function MakeTracks(pref)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
 	//Plot these summary windows at the end
+	avname="W_Ave_cd_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	AppendToGraph /W=cdPlot $avname
+	DoWindow /F cdPlot
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	
 	avname="W_Ave_dD_" + ReplaceString("_",pref,"")
 	errname=ReplaceString("Ave", avname, "Err")
 	AppendToGraph /W=dDPlot $avname
