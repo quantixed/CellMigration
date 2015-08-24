@@ -150,6 +150,7 @@ Function Migrate(cond)
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph rgb=(0,0,0)
+//Build windows to compare averages of everything here - to do
 	Execute "TileWindows/O=1/C"
 End
 
@@ -314,100 +315,51 @@ Function MakeTracks(pref)
 	Label left "Directionality ratio (d/D)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
-End
-
-//This function will load the intensity data from an Excel Workbook **Updated but Untested**
-Function LoadIntensity(pref)
-	String pref
 	
-	XLLoadWave/J=1
-	Variable moviemax=ItemsInList(S_value)
-	NewPath/O/Q path1, S_path
+	//calculate MSD (overlapping method)
+	plotName=pref + "MSDplot"
+	DoWindow /K $plotName	//set up plot
+	Display /N=$plotName
+	wList0=WaveList("tk_" + pref + "*", ";","")
+	nWaves=ItemsInList(wList0)
+	Variable k
 	
-	String sheet,prefix
-	Variable i,j
-	
-	For(i=0; i<moviemax; i+=1)
-		sheet=StringFromList(i,S_Value)
-		prefix=pref + num2str(i)
-		XLLoadWave/S=sheet/R=(J2,K30)/COLT="T"/O/K=0/N=$prefix/P=path1 S_fileName
-	Endfor
-	
-	String wList=WaveList(pref + "*_0",";","")
-	Variable nWaves=ItemsInList(wList)
-	String wName,newName, cell
-	Variable nCells
-	
-	//change waves to give the correct reference to the cd_ wave
 	For(i=0; i<nWaves; i+=1)
-		wName=StringFromList(i,wList)
-		newName=ReplaceString(pref,wName,"cd_tpd_")	//will need changing
-		Wave/T w0=$wName
-		nCells=numpnts(w0)
-		For(j=0; j<nCells; j+=1)
-			cell=ReplaceString("_0",newName,"_5_") + w0[j]
-			w0[j]=cell
+		wName0=StringFromList(i,wList0)			//tk wave
+		Wave w0=$wName0
+		len=DimSize(w0,0)
+		mName0=ReplaceString("tk",wName0,"MSDtemp")
+		newName=ReplaceString("tk",wName0,"MSD")	//for results of MSD per cell
+		Make/O/N=(len,len-1) $mName0=NaN //not sure about len/2
+		Wave m0=$mName0
+		For(k=0; k<len-1; k+=1)	//by col
+			For(j=1; j<len; j+=1)	//by row
+				If(j>k)
+					m0[j][k]= ((w0[j][0] - w0[j-(k+1)][0])^2)+((w0[j][1] - w0[j-(k+1)][1])^2)
+				Endif
+			EndFor
 		EndFor
-	Endfor
-	//concatenate them
-	Concatenate/O wList, cellWave
-	//kill originals
-	For(i=0; i<nWaves; i+=1)
-		wName=StringFromList(i,wList)
-		Wave/T w0=$wName
-		KillWaves w0 
-	Endfor
-	
-	//Process text waves
-	wList=WaveList(pref + "*_1",";","")
-	nWaves=ItemsInList(wList)
-	Variable numint
-	String IntText="very low;low;mid;high;very high;"
-	//change waves to give numeric value
-	For(i=0; i<nWaves; i+=1)
-		wName=StringFromList(i,wList)
-		newName="num" + wName
-		Wave/T w0=$wName
-		nCells=numpnts(w0)
-		Make/O/N=(nCells) $newName
-		Wave w1=$newName
-		For(j=0; j<nCells; j+=1)
-			cell=w0[j]
-			numint=WhichListItem(cell, intText)
-			w1[j]=numint
+		Make/O/N=(len+1) $newName=NaN
+		Wave w2=$newName
+		//extract cell MSDs per time point
+		For(k=0;k<len; k+=1)
+			Duplicate/O/R=[][k] m0, w1 //no need to redimension or zapnans
+			Wavestats/Q w1			
+			w2[k+1]=v_avg
 		EndFor
-		KillWaves w0	//kill text waves after processing
+		SetScale/P x 0,20,"min", w2
+		AppendtoGraph /W=$plotName w2
 	Endfor
-	//concatenate them
-	wList=WaveList("num*",";","")
-	Concatenate/O wList, IntWave
-	//kill individuals
-	For(i=0; i<nWaves; i+=1)
-		wName=StringFromList(i,wList)
-		Wave/T w0=$wName
-		KillWaves w0 
-	Endfor
-	
-	DoWindow /K Plot0	//set up plot for very low traces
-	Display /N=Plot0
-	DoWindow /K Plot1	//set up plot for low traces
-	Display /N=Plot1
-	DoWindow /K Plot2	//set up plot for mid traces
-	Display /N=Plot2
-	DoWindow /K Plot3	//set up plot for high traces
-	Display /N=Plot3
-	DoWindow /K Plot4	//set up plot for very high traces
-	Display /N=Plot4
-
-	nCells=numpnts(cellWave)
-	String pName
-	Wave/T w0=cellWave
-	Wave IntWave
-	For(i=0; i<nCells; i+=1)
-		cell=w0[i]
-		Wave w1=$cell
-		numint=IntWave[i]
-		pName="Plot" + num2str(numint)
-		AppendtoGraph /W=$pName w1
-	EndFor
+	KillWaves m0	//removed killwaves w1 as it created an error
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
+	avlist=Wavelist("MSD*",";","WIN:"+ plotName)
+	avname="W_Ave_MSD_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
+	AppendToGraph /W=$plotName $avname
+	DoWindow /F $plotName
+	ModifyGraph log=1
+	Label left "MSD"
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 End
