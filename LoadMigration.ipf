@@ -384,14 +384,14 @@ Function MakeTracks(pref)
 		Wave w2=$newName
 		//extract cell MSDs per time point
 		For(k=0;k<len; k+=1)
-			Duplicate/O/R=[][k] m0, w1 //no need to redimension or zapnans
+			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
 			Wavestats/Q w1			
 			w2[k+1]=v_avg
 		EndFor
+		KillWaves m0
 		SetScale/P x 0,20,"min", w2
 		AppendtoGraph /W=$plotName w2
 	Endfor
-	KillWaves m0	//removed killwaves w1 as it created an error
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
 	avlist=Wavelist("MSD*",";","WIN:"+ plotName)
 	avname="W_Ave_MSD_" + ReplaceString("_",pref,"")
