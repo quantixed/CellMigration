@@ -311,6 +311,7 @@ Function MakeTracks(pref)
 			AppendtoGraph /W=$plotName w5[][1] vs w5[][0]
 			Endif
 		EndFor
+		Killwaves w0,w1 //tidy up
 	Endfor
 	DoWindow /F $plotName
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
