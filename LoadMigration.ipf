@@ -1,10 +1,13 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #include <Waves Average>
 
-//This will load all sheets of migration data from a specified excel file
-//NOTE path is fixed - this means you need to edit it to read the excel files
-//NOTE no headers in Excel file
-//takes columns A-H max of 1000 rows
+//LoadMigration contains 3 procedures to analyse cell migration in IgorPro
+//Use ImageJ to track the cells. Outputs from tracking are saved in sheets in an Excel Workbook, 1 per condition
+//Execute Migrate(n) to specify the load of n experimental conditions
+//This function will trigger the load and the analysis of cell migration via two functions
+//LoadMigration() - will load all sheets of migration data from a specified excel file
+//MakeTracks() - does the analysis
+//NOTE no headers in Excel file keep data to columns A-H, max of 1000 rows
 //columns are
 //A - 0 - ImageJ row
 //B - 1 - Track No
@@ -15,6 +18,7 @@
 //G - 6 - velocity
 //H - 7 - pixel value
 
+//Colours are taken from Paul Tol SRON stylesheet
 //Define colours
 StrConstant SRON_1 = "0x4477aa;"
 StrConstant SRON_2 = "0x4477aa; 0xcc6677;"
@@ -80,6 +84,18 @@ Function Migrate(cond)
 		pal = SRON_4
 	elseif(cond==5)
 		pal = SRON_5
+	elseif(cond==6)
+		pal = SRON_6
+	elseif(cond==7)
+		pal = SRON_7
+	elseif(cond==8)
+		pal = SRON_8
+	elseif(cond==9)
+		pal = SRON_9
+	elseif(cond==10)
+		pal = SRON_10
+	elseif(cond==11)
+		pal = SRON_11
 	else
 		pal = SRON_12
 	endif
@@ -94,6 +110,8 @@ Function Migrate(cond)
 	Variable color
 	Variable /G gR,gG,gB
 	
+	DoWindow /K cdPlot
+	Display /N=cdPlot
 	DoWindow /K dDPlot
 	Display /N=dDPlot
 	DoWindow /K MSDPlot
@@ -131,6 +149,11 @@ Function Migrate(cond)
 	EndFor
 	
 	//Tidy up summary windows
+	DoWindow /F cdPlot
+	SetAxis/A/N=1 left
+	Label left "Cumulative distance (µm)"
+	Label bottom "Time (min)"
+	
 	DoWindow /F dDPlot
 	Label left "Directionality ratio (d/D)"
 	Label bottom "Time (min)"
@@ -169,7 +192,7 @@ Function Migrate(cond)
 	Edit /N=SpeedTable sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
 	DoWindow /K SpeedPlot
 	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
-	Label left "Speed (Âµm/min)";DelayUpdate
+	Label left "Speed (µm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
@@ -253,12 +276,12 @@ Function MakeTracks(pref)
 	Endfor
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
 	avlist=Wavelist("cd*",";","WIN:"+ plotName)
-	avname="W_Ave_tk_" + ReplaceString("_",pref,"")
+	avname="W_Ave_cd_" + ReplaceString("_",pref,"")
 	errname=ReplaceString("Ave", avname, "Err")
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Cumulative distance (Âµm)"
+	Label left "Cumulative distance (µm)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -300,6 +323,7 @@ Function MakeTracks(pref)
 			AppendtoGraph /W=$plotName w5[][1] vs w5[][0]
 			Endif
 		EndFor
+		Killwaves w0,w1 //tidy up
 	Endfor
 	DoWindow /F $plotName
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
@@ -373,14 +397,14 @@ Function MakeTracks(pref)
 		Wave w2=$newName
 		//extract cell MSDs per time point
 		For(k=0;k<len; k+=1)
-			Duplicate/O/R=[][k] m0, w1 //no need to redimension or zapnans
+			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
 			Wavestats/Q w1			
 			w2[k+1]=v_avg
 		EndFor
+		KillWaves m0
 		SetScale/P x 0,20,"min", w2
 		AppendtoGraph /W=$plotName w2
 	Endfor
-	KillWaves m0	//removed killwaves w1 as it created an error
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
 	avlist=Wavelist("MSD*",";","WIN:"+ plotName)
 	avname="W_Ave_MSD_" + ReplaceString("_",pref,"")
@@ -398,6 +422,13 @@ Function MakeTracks(pref)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
 	//Plot these summary windows at the end
+	avname="W_Ave_cd_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	AppendToGraph /W=cdPlot $avname
+	DoWindow /F cdPlot
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	
 	avname="W_Ave_dD_" + ReplaceString("_",pref,"")
 	errname=ReplaceString("Ave", avname, "Err")
 	AppendToGraph /W=dDPlot $avname
