@@ -129,7 +129,7 @@ Function Migrate(cond)
 		sum_Label[i-1]=lab
 		
 		//specify colours
-		if(cond<6)
+		if(cond<13)
 			color=str2num(StringFromList(i-1,pal))
 			gR=hexcolor_red(color)
 			gG=hexcolor_green(color)
