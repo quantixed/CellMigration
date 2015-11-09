@@ -84,6 +84,18 @@ Function Migrate(cond)
 		pal = SRON_4
 	elseif(cond==5)
 		pal = SRON_5
+	elseif(cond==6)
+		pal = SRON_6
+	elseif(cond==7)
+		pal = SRON_7
+	elseif(cond==8)
+		pal = SRON_8
+	elseif(cond==9)
+		pal = SRON_9
+	elseif(cond==10)
+		pal = SRON_10
+	elseif(cond==11)
+		pal = SRON_11
 	else
 		pal = SRON_12
 	endif
@@ -139,7 +151,7 @@ Function Migrate(cond)
 	//Tidy up summary windows
 	DoWindow /F cdPlot
 	SetAxis/A/N=1 left
-	Label left "Cumulative distance (Âµm)"
+	Label left "Cumulative distance (µm)"
 	Label bottom "Time (min)"
 	
 	DoWindow /F dDPlot
@@ -180,7 +192,7 @@ Function Migrate(cond)
 	Edit /N=SpeedTable sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
 	DoWindow /K SpeedPlot
 	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
-	Label left "Speed (Âµm/min)";DelayUpdate
+	Label left "Speed (µm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
@@ -269,7 +281,7 @@ Function MakeTracks(pref)
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Cumulative distance (Âµm)"
+	Label left "Cumulative distance (µm)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
