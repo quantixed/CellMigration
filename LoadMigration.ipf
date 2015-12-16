@@ -3,7 +3,7 @@
 
 //LoadMigration contains 3 procedures to analyse cell migration in IgorPro
 //Use ImageJ to track the cells. Outputs from tracking are saved in sheets in an Excel Workbook, 1 per condition
-//Execute Migrate(n) to specify the load of n experimental conditions
+//Execute Migrate().
 //This function will trigger the load and the analysis of cell migration via two functions
 //LoadMigration() - will load all sheets of migration data from a specified excel file
 //MakeTracks() - does the analysis
@@ -289,6 +289,46 @@ Function MakeTracks(pref,tStep,pxSize)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
 	Label left "Cumulative distance (µm)"
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	//instantaneous velocity over time	
+	plotName=pref + "ivplot"
+	DoWindow /K $plotName	//set up plot
+	Display /N=$plotName
+
+	For(i=0; i<nWaves; i+=1)
+		mName0=StringFromList(i,wList0)
+		Wave m0=$mName0
+		Duplicate/O/R=[][5] m0, w0	//distance
+		Duplicate/O/R=[][1] m0, w1	//cell number
+		Redimension /N=-1 w0, w1
+		nTrack=WaveMax(w1)	//find maximum track no.
+		For(j=1; j<(nTrack+2); j+=1)	//index is 1-based, plus 2 was needed.
+			newName = "iv_" + mName0 + "_" + num2str(j)
+			Duplicate/O w0 $newName
+			Wave w2=$newName
+			w2 = (w1==j) ? w0 : NaN
+			WaveTransform zapnans w2
+			If(numpnts(w2)==0)
+				Killwaves w2
+			Else
+			w2[0]=0	//first point in distance trace is -1 so correct this
+			w2 /=tStep	//make instantaneous velocity (units are µm/min)
+			SetScale/P x 0,tStep,"min", w2
+			AppendtoGraph /W=$plotName $newName
+			Endif
+		EndFor
+		DoWindow /F $plotName
+	Endfor
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
+	avlist=Wavelist("iv*",";","WIN:"+ plotName)
+	avname="W_Ave_iv_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
+	AppendToGraph /W=$plotName $avname
+	DoWindow /F $plotName
+	Label left "Instantaneous velocity (µm/min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
