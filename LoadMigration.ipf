@@ -56,9 +56,16 @@ End
 
 
 //Loads the data and performs migration analysis
-Function Migrate(cond)
-	Variable cond //how many conditions?
-	//call example Migrate(2)
+Function Migrate()
+	
+	Variable cond=2
+	Variable tStep=20
+	Variable pxSize=0.32
+	
+	Prompt cond, "How many conditions?"
+	Prompt tStep, "Time interval (min)"
+	Prompt  pxSize, "Pixel size (Âµm)"
+	DoPrompt "Specify", cond, tStep, pxSize
 	
 	//kill all windows and waves
 	string fulllist = WinList("*", ";","WIN:3")
@@ -151,7 +158,7 @@ Function Migrate(cond)
 	//Tidy up summary windows
 	DoWindow /F cdPlot
 	SetAxis/A/N=1 left
-	Label left "Cumulative distance (µm)"
+	Label left "Cumulative distance (Âµm)"
 	Label bottom "Time (min)"
 	
 	DoWindow /F dDPlot
@@ -162,7 +169,7 @@ Function Migrate(cond)
 	ModifyGraph log=1
 	SetAxis/A/N=1 left
 	String wName=StringFromList(0,WaveList("W_Ave*",";","WIN:"))
-	SetAxis bottom 20,((numpnts($wName)*20)/2)
+	SetAxis bottom tStep,((numpnts($wName)*tStep)/2)
 	Label left "MSD"
 	Label bottom "Time (min)"
 	
@@ -181,7 +188,7 @@ Function Migrate(cond)
 			wName=StringFromList(j,wList)
 			Wave w1=$wName
 			last=numpnts(w1)
-			w0[j]=w1[last-1]/((last-1)*20)	//scaling
+			w0[j]=w1[last-1]/((last-1)*tStep)	//scaling
 		Endfor
 		WaveStats/Q w0
 		sum_MeanSpeed[i]=V_avg
@@ -192,7 +199,7 @@ Function Migrate(cond)
 	Edit /N=SpeedTable sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
 	DoWindow /K SpeedPlot
 	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
-	Label left "Speed (µm/min)";DelayUpdate
+	Label left "Speed (Âµm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
@@ -229,7 +236,6 @@ End
 
 
 //This function will make cumulative distance waves for each cell. They are called cd_*
-//Scaling is set to 20 min
 Function MakeTracks(pref)
 	String pref
 	
@@ -268,7 +274,7 @@ Function MakeTracks(pref)
 			Else
 			w2[0]=0	//first point in distance trace is -1 so correct this
 			Integrate/METH=0 w2	//make cumulative distance
-			SetScale/P x 0,20,"min", w2
+			SetScale/P x 0,tStep,"min", w2
 			AppendtoGraph /W=$plotName $newName
 			Endif
 		EndFor
@@ -281,7 +287,7 @@ Function MakeTracks(pref)
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Cumulative distance (µm)"
+	Label left "Cumulative distance (Âµm)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -310,14 +316,14 @@ Function MakeTracks(pref)
 			Else
 			off=w3[0]
 			w3 -=off	//set to origin
-			w3 *=0.32
+			w3 *=pxSize
 			//do the y wave
 			Duplicate/O w1 w4
 			w4 = (w2==j) ? w4 : NaN
 			WaveTransform zapnans w4
 			off=w4[0]
 			w4 -=off
-			w4 *=0.32
+			w4 *=pxSize
 			Concatenate/O/KILL {w3,w4}, $newName
 			Wave w5=$newName
 			AppendtoGraph /W=$plotName w5[][1] vs w5[][0]
@@ -402,7 +408,7 @@ Function MakeTracks(pref)
 			w2[k+1]=v_avg
 		EndFor
 		KillWaves m0
-		SetScale/P x 0,20,"min", w2
+		SetScale/P x 0,tStep,"min", w2
 		AppendtoGraph /W=$plotName w2
 	Endfor
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
@@ -414,8 +420,8 @@ Function MakeTracks(pref)
 	DoWindow /F $plotName
 	ModifyGraph log=1
 	SetAxis/A/N=1 left
-	len=numpnts($avName)*20
-	SetAxis bottom 20,(len/2)
+	len=numpnts($avName)*tStep
+	SetAxis bottom tStep,(len/2)
 	Label left "MSD"
 	Label bottom "Time (min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
