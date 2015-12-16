@@ -9,7 +9,7 @@ Migrate function
 
 LoadMigration.ipf contains three procedures to analyse cell migration in IgorPro.<br />
 Use ImageJ to track the cells. Outputs from tracking are saved in sheets in an Excel Workbook, 1 per condition.<br />
-Execute <code>Migrate(n)</code> to specify the load of n experimental conditions.<br />
+Execute <code>Migrate()</code>.<br />
 This function will trigger the load and the analysis of cell migration via two functions.
 
 * <code>LoadMigration()</code> - will load all sheets of migration data from a specified excel file
