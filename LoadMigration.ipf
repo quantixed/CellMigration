@@ -109,9 +109,8 @@ Function Migrate()
 
 	Make/O/N=(cond,3) colorwave
 	Make/O/T/N=(cond) sum_Label
-	Make/O/N=(cond) sum_MeanSpeed
-	Make/O/N=(cond) sum_SemSpeed
-	Make/O/N=(cond) sum_NSpeed
+	Make/O/N=(cond) sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
+	Make/O/N=(cond) sum_MeanIV,sum_SemIV
 	
 	String pref,lab
 	Variable color
@@ -180,7 +179,7 @@ Function Migrate()
 	Label left "MSD"
 	Label bottom "Time (min)"
 	
-	//average data	
+	//average speed data	
 	String wList, newName
 	Variable nTracks,last,j
 	
@@ -194,7 +193,7 @@ Function Migrate()
 		For(j=0; j<nTracks; j+=1)
 			wName=StringFromList(j,wList)
 			Wave w1=$wName
-			last=numpnts(w1)
+			last=numpnts(w1)	//finds last point (max cumulative distance)
 			w0[j]=w1[last-1]/((last-1)*tStep)	//scaling
 		Endfor
 		WaveStats/Q w0
@@ -216,8 +215,40 @@ Function Migrate()
 	ModifyGraph hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
+	
+	//average instantaneous velocity variance	
+	
+	For(i=0; i<cond; i+=1) //loop through conditions 0-based
+		pref=sum_Label[i] + "_"
+		wList=WaveList("iv_" + pref + "*", ";","")
+		nTracks=ItemsInList(wList)
+		newName="Sum_ivVar_" + ReplaceString("_",pref,"")
+		Make/O/N=(nTracks) $newName
+		Wave w0=$newName
+		For(j=0; j<nTracks; j+=1)
+			wName=StringFromList(j,wList)
+			Wave w1=$wName
+			w0[j]=variance(w1)	//calculate varance for each cell
+		Endfor
+		WaveStats/Q w0
+		sum_MeanIV[i]=V_avg
+		sum_SemIV[i]=V_sem
+	Endfor
+	AppendToTable /W=SpeedTable sum_MeanIV,sum_SemIV
+	DoWindow /K IVCatPlot
+	Display /N=IVCatPlot sum_MeanIV vs sum_Label
+	Label left "Variance (µm/min)";DelayUpdate
+	SetAxis/A/N=1/E=1 left
+	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
+	ModifyGraph zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
+	ModifyGraph hbFill=2
+	AppendToGraph/R sum_MeanIV vs sum_Label
+	SetAxis/A/N=1/E=1 right
+	ModifyGraph hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
+	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
+	ErrorBars sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
 
-	Execute "TileWindows/O=3/C"
+	Execute "TileWindows/O=1/C"
 End
 
 //This function will load the tracking data from an Excel Workbook
@@ -377,7 +408,7 @@ Function MakeTracks(pref,tStep,pxSize)
 			AppendtoGraph /W=$plotName w5[][1] vs w5[][0]
 			Endif
 		EndFor
-		Killwaves w0,w1 //tidy up
+		Killwaves w0,w1,w2 //tidy up
 	Endfor
 	DoWindow /F $plotName
 	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
