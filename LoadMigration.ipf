@@ -119,6 +119,8 @@ Function Migrate()
 	
 	DoWindow /K cdPlot
 	Display /N=cdPlot
+	DoWindow /K ivPlot
+	Display /N=ivPlot
 	DoWindow /K dDPlot
 	Display /N=dDPlot
 	DoWindow /K MSDPlot
@@ -159,6 +161,11 @@ Function Migrate()
 	DoWindow /F cdPlot
 	SetAxis/A/N=1 left
 	Label left "Cumulative distance (µm)"
+	Label bottom "Time (min)"
+	
+	DoWindow /F ivPlot
+	SetAxis/A/N=1 left
+	Label left "Instantaneous velocity (µm/min)"
 	Label bottom "Time (min)"
 	
 	DoWindow /F dDPlot
@@ -473,6 +480,13 @@ Function MakeTracks(pref,tStep,pxSize)
 	errname=ReplaceString("Ave", avname, "Err")
 	AppendToGraph /W=cdPlot $avname
 	DoWindow /F cdPlot
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	
+	avname="W_Ave_iv_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	AppendToGraph /W=ivPlot $avname
+	DoWindow /F ivPlot
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 	
