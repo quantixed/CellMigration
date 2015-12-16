@@ -152,7 +152,7 @@ Function Migrate()
 		colorwave[i-1][2]=gB
 		//run other procedures
 		LoadMigration(pref)
-		MakeTracks(pref)
+		MakeTracks(pref,tStep,pxSize)
 	EndFor
 	
 	//Tidy up summary windows
@@ -236,8 +236,9 @@ End
 
 
 //This function will make cumulative distance waves for each cell. They are called cd_*
-Function MakeTracks(pref)
+Function MakeTracks(pref,tStep,pxSize)
 	String pref
+	Variable tStep, pxSize
 	
 	NVAR cR=gR
 	NVAR cG=gG
