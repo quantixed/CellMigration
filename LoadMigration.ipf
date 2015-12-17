@@ -120,6 +120,8 @@ Function Migrate()
 	Display /N=cdPlot
 	DoWindow /K ivPlot
 	Display /N=ivPlot
+	DoWindow /K ivHPlot
+	Display /N=ivHPlot
 	DoWindow /K dDPlot
 	Display /N=dDPlot
 	DoWindow /K MSDPlot
@@ -167,6 +169,13 @@ Function Migrate()
 	Label left "Instantaneous velocity (µm/min)"
 	Label bottom "Time (min)"
 	
+	DoWindow /F ivHPlot
+	SetAxis/A/N=1 left
+	SetAxis bottom 0,2
+	Label left "Frequency"
+	Label bottom "Instantaneous velocity (µm/min)"
+	ModifyGraph mode=6
+	
 	DoWindow /F dDPlot
 	Label left "Directionality ratio (d/D)"
 	Label bottom "Time (min)"
@@ -210,14 +219,18 @@ Function Migrate()
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
 	ModifyGraph hbFill=2
+#if (IgorVersion() >=7)
+	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
+	ModifyGraph useBarStrokeRGB=1
+#else
 	AppendToGraph/R sum_MeanSpeed vs sum_Label
 	SetAxis/A/N=1/E=1 right
 	ModifyGraph hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
+#endif
 	
 	//average instantaneous velocity variance	
-	
 	For(i=0; i<cond; i+=1) //loop through conditions 0-based
 		pref=sum_Label[i] + "_"
 		wList=WaveList("iv_" + pref + "*", ";","")
@@ -242,11 +255,16 @@ Function Migrate()
 	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
 	ModifyGraph zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
 	ModifyGraph hbFill=2
+#if (IgorVersion() >=7)
+	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
+	ModifyGraph useBarStrokeRGB=1
+#else
 	AppendToGraph/R sum_MeanIV vs sum_Label
 	SetAxis/A/N=1/E=1 right
 	ModifyGraph hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
+#endif
 
 	Execute "TileWindows/O=1/C"
 End
@@ -351,7 +369,7 @@ Function MakeTracks(pref,tStep,pxSize)
 			If(numpnts(w2)==0)
 				Killwaves w2
 			Else
-			w2[0]=0	//first point in distance trace is -1 so correct this
+			w2[0]=0	//first point in distance trace is -1, so correct this
 			w2 /=tStep	//make instantaneous velocity (units are µm/min)
 			SetScale/P x 0,tStep,"min", w2
 			AppendtoGraph /W=$plotName $newName
@@ -369,6 +387,24 @@ Function MakeTracks(pref,tStep,pxSize)
 	Label left "Instantaneous velocity (µm/min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	plotName=pref + "ivHist"
+	DoWindow /K $plotName	//set up plot
+	Display /N=$plotName
+	
+	Concatenate/O/NP avlist, tempwave
+	newName=pref + "_ivHist"
+	Variable bval=ceil(wavemax(tempwave)/(sqrt((3*pxsize)^2)/tStep))
+	Make/O/N=(bval) $newName
+	Histogram/P/B={0,(sqrt((3*pxsize)^2)/tStep),bVal} tempwave,$newName
+	AppendToGraph /W=$plotName $newName
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph mode=5,hbFill=4
+	SetAxis/A/N=1/E=1 left
+	SetAxis bottom 0,2
+	Label left "Frequency"
+	Label bottom "Instantaneous velocity (µm/min)"
+	Killwaves tempwave
 	
 	//plot out tracks
 	plotName=pref + "tkplot"
@@ -520,6 +556,11 @@ Function MakeTracks(pref,tStep,pxSize)
 	DoWindow /F ivPlot
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	
+	newName=pref + "_ivHist"
+	AppendToGraph /W=ivHPlot $newName
+	DoWindow /F ivHPlot
+	ModifyGraph rgb($newName)=(cR,cG,cB)
 	
 	avname="W_Ave_dD_" + ReplaceString("_",pref,"")
 	errname=ReplaceString("Ave", avname, "Err")
