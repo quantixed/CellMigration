@@ -126,6 +126,8 @@ Function Migrate()
 	Display /N=dDPlot
 	DoWindow /K MSDPlot
 	Display /N=MSDPlot
+	DoWindow /K DAPlot
+	Display /N=DAPlot
 	
 	For(i=1; i<cond+1; i+=1)
 		Prompt pref, "Experimental condition e.g. \"ctrl_\", \"tacc3_\". Quotes + underscore required"
@@ -188,6 +190,11 @@ Function Migrate()
 	Label left "MSD"
 	Label bottom "Time (min)"
 	
+	DoWindow /F DAPlot
+	SetAxis left 0.5,1
+	Label left "Direction autocorrelation"
+	Label bottom "Time (min)"
+	
 	//average speed data	
 	String wList, newName
 	Variable nTracks,last,j
@@ -219,16 +226,11 @@ Function Migrate()
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
 	ModifyGraph hbFill=2
-#if (IgorVersion() >=7)
-	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
-	ModifyGraph useBarStrokeRGB=1
-#else
 	AppendToGraph/R sum_MeanSpeed vs sum_Label
 	SetAxis/A/N=1/E=1 right
 	ModifyGraph hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
-#endif
 	
 	//average instantaneous velocity variance	
 	For(i=0; i<cond; i+=1) //loop through conditions 0-based
@@ -255,16 +257,11 @@ Function Migrate()
 	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
 	ModifyGraph zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
 	ModifyGraph hbFill=2
-#if (IgorVersion() >=7)
-	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
-	ModifyGraph useBarStrokeRGB=1
-#else
 	AppendToGraph/R sum_MeanIV vs sum_Label
 	SetAxis/A/N=1/E=1 right
 	ModifyGraph hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
-#endif
 
 	Execute "TileWindows/O=1/C"
 End
@@ -505,10 +502,10 @@ Function MakeTracks(pref,tStep,pxSize)
 		len=DimSize(w0,0)
 		mName0=ReplaceString("tk",wName0,"MSDtemp")
 		newName=ReplaceString("tk",wName0,"MSD")	//for results of MSD per cell
-		Make/O/N=(len,len-1) $mName0=NaN //not sure about len/2
+		Make/O/N=(len,len-1) $mName0=NaN //this calculates all, probably only need first half
 		Wave m0=$mName0
-		For(k=0; k<len-1; k+=1)	//by col
-			For(j=1; j<len; j+=1)	//by row
+		For(k=0; k<len-1; k+=1)	//by col, this is delta T
+			For(j=1; j<len; j+=1)	//by row, this is the starting frame
 				If(j>k)
 					m0[j][k]= ((w0[j][0] - w0[j-(k+1)][0])^2)+((w0[j][1] - w0[j-(k+1)][1])^2)
 				Endif
@@ -538,6 +535,60 @@ Function MakeTracks(pref,tStep,pxSize)
 	len=numpnts($avName)*tStep
 	SetAxis bottom tStep,(len/2)
 	Label left "MSD"
+	Label bottom "Time (min)"
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	//calculate direction autocorrelation
+	plotName=pref + "DAplot"
+	DoWindow /K $plotName	//set up plot
+	Display /N=$plotName
+	//could delete these two lines?
+	wList0=WaveList("tk_" + pref + "*", ";","")
+	nWaves=ItemsInList(wList0)
+	
+	For(i=0; i<nWaves; i+=1)
+		wName0=StringFromList(i,wList0)			//tk wave
+		Wave w0=$wName0
+		len=DimSize(w0,0)	//len is number of frames
+		Make/O/N=(len-1,2) vwave	//make vector wave. nVectors is len-1
+		vwave = w0[p+1][q] - w0[p][q]
+		Make/O/D/N=(len-1) magwave	//make magnitude wave
+		magwave = sqrt((vwave[p][0]^2) + (vwave[p][1]^2))
+		vwave /=magwave[p]	//normalise the vectors
+		mName0=ReplaceString("tk",wName0,"DAtemp")
+		newName=ReplaceString("tk",wName0,"DA")	//for results of DA per cell
+		Make/O/N=(len-1,len-2) $mName0=NaN	//matrix for results (nVectors,n∆t)
+		Wave m0=$mName0
+		For(k=0; k<len-1; k+=1)	//by col, this is ∆t 0-based
+			For(j=0; j<len; j+=1)	//by row, this is the starting vector 0-based
+				If((j+(k+1)) < len-1)
+					m0[j][k]= (vwave[j][0] * vwave[j+(k+1)][0])+(vwave[j][1] * vwave[j+(k+1)][1])
+				Endif
+			EndFor
+		EndFor
+		Make/O/N=(len-1) $newName=NaN
+		Wave w2=$newName
+		//extract cell average cos(theta) per time interval
+		For(k=0; k<len-1; k+=1)
+			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
+			Wavestats/Q w1	//mean function requires zapnans	
+			w2[k]=v_avg
+		EndFor
+		KillWaves m0
+		SetScale/P x 0,tStep,"min", w2
+		AppendtoGraph /W=$plotName w2
+	Endfor
+	Killwaves vwave,magwave
+	ModifyGraph /W=$plotName rgb=(cR,cG,cB)
+	avlist=Wavelist("DA*",";","WIN:"+ plotName)
+	avname="W_Ave_DA_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
+	AppendToGraph /W=$plotName $avname
+	DoWindow /F $plotName
+	SetAxis left 0,1
+	Label left "Direction autocorrelation"
 	Label bottom "Time (min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
@@ -573,6 +624,13 @@ Function MakeTracks(pref,tStep,pxSize)
 	errname=ReplaceString("Ave", avname, "Err")
 	AppendToGraph /W=MSDPlot $avname
 	DoWindow /F MSDPlot
+	ErrorBars $avname Y,wave=($ErrName,$ErrName)
+	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	
+	avname="W_Ave_DA_" + ReplaceString("_",pref,"")
+	errname=ReplaceString("Ave", avname, "Err")
+	AppendToGraph /W=DAPlot $avname
+	DoWindow /F DAPlot
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 End
