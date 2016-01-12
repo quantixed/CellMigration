@@ -1,4 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+#pragma version=1.0		// version number of Migrate()
 #include <Waves Average>
 
 //LoadMigration contains 3 procedures to analyse cell migration in IgorPro
@@ -64,7 +65,7 @@ Function Migrate()
 	
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
-	Prompt  pxSize, "Pixel size (Âµm)"
+	Prompt  pxSize, "Pixel size (µm)"
 	DoPrompt "Specify", cond, tStep, pxSize
 	
 	//kill all windows and waves
@@ -163,19 +164,19 @@ Function Migrate()
 	//Tidy up summary windows
 	DoWindow /F cdPlot
 	SetAxis/A/N=1 left
-	Label left "Cumulative distance (Âµm)"
+	Label left "Cumulative distance (µm)"
 	Label bottom "Time (min)"
 	
 	DoWindow /F ivPlot
 	SetAxis/A/N=1 left
-	Label left "Instantaneous velocity (Âµm/min)"
+	Label left "Instantaneous velocity (µm/min)"
 	Label bottom "Time (min)"
 	
 	DoWindow /F ivHPlot
 	SetAxis/A/N=1 left
 	SetAxis bottom 0,2
 	Label left "Frequency"
-	Label bottom "Instantaneous velocity (Âµm/min)"
+	Label bottom "Instantaneous velocity (µm/min)"
 	ModifyGraph mode=6
 	
 	DoWindow /F dDPlot
@@ -221,7 +222,7 @@ Function Migrate()
 	Edit /N=SpeedTable sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
 	DoWindow /K SpeedPlot
 	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
-	Label left "Speed (Âµm/min)";DelayUpdate
+	Label left "Speed (µm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
@@ -233,7 +234,7 @@ Function Migrate()
 	ErrorBars sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	
 	//average instantaneous velocity variance	
-	For(i=0; i<cond; i+=1) //loop through conditions 0-based
+	For(i=0; i<cond; i+=1) //loop through conditions, 0-based
 		pref=sum_Label[i] + "_"
 		wList=WaveList("iv_" + pref + "*", ";","")
 		nTracks=ItemsInList(wList)
@@ -252,7 +253,7 @@ Function Migrate()
 	AppendToTable /W=SpeedTable sum_MeanIV,sum_SemIV
 	DoWindow /K IVCatPlot
 	Display /N=IVCatPlot sum_MeanIV vs sum_Label
-	Label left "Variance (Âµm/min)";DelayUpdate
+	Label left "Variance (µm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
 	ModifyGraph zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
@@ -262,8 +263,11 @@ Function Migrate()
 	ModifyGraph hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
-
+	
+	OrderGraphs()
 	Execute "TileWindows/O=1/C"
+	//when we get to the end, print version number (hard-coded)
+	Print "Executed Migrate v1.0"
 End
 
 //This function will load the tracking data from an Excel Workbook
@@ -341,7 +345,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Cumulative distance (Âµm)"
+	Label left "Cumulative distance (µm)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -367,7 +371,7 @@ Function MakeTracks(pref,tStep,pxSize)
 				Killwaves w2
 			Else
 			w2[0]=0	//first point in distance trace is -1, so correct this
-			w2 /=tStep	//make instantaneous velocity (units are Âµm/min)
+			w2 /=tStep	//make instantaneous velocity (units are µm/min)
 			SetScale/P x 0,tStep,"min", w2
 			AppendtoGraph /W=$plotName $newName
 			Endif
@@ -381,7 +385,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Instantaneous velocity (Âµm/min)"
+	Label left "Instantaneous velocity (µm/min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -400,7 +404,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	SetAxis/A/N=1/E=1 left
 	SetAxis bottom 0,2
 	Label left "Frequency"
-	Label bottom "Instantaneous velocity (Âµm/min)"
+	Label bottom "Instantaneous velocity (µm/min)"
 	Killwaves tempwave
 	
 	//plot out tracks
@@ -558,9 +562,9 @@ Function MakeTracks(pref,tStep,pxSize)
 		vwave /=magwave[p]	//normalise the vectors
 		mName0=ReplaceString("tk",wName0,"DAtemp")
 		newName=ReplaceString("tk",wName0,"DA")	//for results of DA per cell
-		Make/O/N=(len-1,len-2) $mName0=NaN	//matrix for results (nVectors,nâˆ†t)
+		Make/O/N=(len-1,len-2) $mName0=NaN	//matrix for results (nVectors,nÆt)
 		Wave m0=$mName0
-		For(k=0; k<len-1; k+=1)	//by col, this is âˆ†t 0-based
+		For(k=0; k<len-1; k+=1)	//by col, this is Æt 0-based
 			For(j=0; j<len; j+=1)	//by row, this is the starting vector 0-based
 				If((j+(k+1)) < len-1)
 					m0[j][k]= (vwave[j][0] * vwave[j+(k+1)][0])+(vwave[j][1] * vwave[j+(k+1)][1])
@@ -633,4 +637,16 @@ Function MakeTracks(pref,tStep,pxSize)
 	DoWindow /F DAPlot
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+End
+
+Function OrderGraphs()
+	String list = WinList("*", ";", "WIN:1")		// List of all graph windows
+	Variable numWindows = ItemsInList(list)
+	
+	Variable i
+	
+	for(i=0; i<numWindows; i+=1)
+		String name = StringFromList(i, list)
+		DoWindow /F $name
+	endfor
 End
