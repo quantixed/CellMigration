@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.0		// version number of Migrate()
+#pragma version=1.01		// version number of Migrate()
 #include <Waves Average>
 
 //LoadMigration contains 3 procedures to analyse cell migration in IgorPro
@@ -65,7 +65,7 @@ Function Migrate()
 	
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
-	Prompt  pxSize, "Pixel size (µm)"
+	Prompt  pxSize, "Pixel size (Âµm)"
 	DoPrompt "Specify", cond, tStep, pxSize
 	
 	//kill all windows and waves
@@ -161,28 +161,31 @@ Function Migrate()
 		MakeTracks(pref,tStep,pxSize)
 	EndFor
 	
+	DoWindow /K summaryLayout
+	NewLayout /N=summaryLayout		//Igor 7 has multipage layouts, using separate layouts for now.
+	
 	//Tidy up summary windows
 	DoWindow /F cdPlot
 	SetAxis/A/N=1 left
-	Label left "Cumulative distance (µm)"
+	Label left "Cumulative distance (Âµm)"
 	Label bottom "Time (min)"
-	
+		AppendLayoutObject /W=summaryLayout graph cdPlot
 	DoWindow /F ivPlot
 	SetAxis/A/N=1 left
-	Label left "Instantaneous velocity (µm/min)"
+	Label left "Instantaneous velocity (Âµm/min)"
 	Label bottom "Time (min)"
-	
+		AppendLayoutObject /W=summaryLayout graph ivPlot
 	DoWindow /F ivHPlot
 	SetAxis/A/N=1 left
 	SetAxis bottom 0,2
 	Label left "Frequency"
-	Label bottom "Instantaneous velocity (µm/min)"
+	Label bottom "Instantaneous velocity (Âµm/min)"
 	ModifyGraph mode=6
-	
+		AppendLayoutObject /W=summaryLayout graph ivHPlot
 	DoWindow /F dDPlot
 	Label left "Directionality ratio (d/D)"
 	Label bottom "Time (min)"
-	
+		AppendLayoutObject /W=summaryLayout graph dDPlot
 	DoWindow /F MSDPlot
 	ModifyGraph log=1
 	SetAxis/A/N=1 left
@@ -190,11 +193,13 @@ Function Migrate()
 	SetAxis bottom tStep,((numpnts($wName)*tStep)/2)
 	Label left "MSD"
 	Label bottom "Time (min)"
-	
+		AppendLayoutObject /W=summaryLayout graph MSDPlot
 	DoWindow /F DAPlot
-	SetAxis left 0.5,1
+	SetAxis left 0,1
+	SetAxis bottom 0,((numpnts($wName)*tStep)/2)
 	Label left "Direction autocorrelation"
 	Label bottom "Time (min)"
+		AppendLayoutObject /W=summaryLayout graph DAPlot
 	
 	//average speed data	
 	String wList, newName
@@ -222,7 +227,7 @@ Function Migrate()
 	Edit /N=SpeedTable sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
 	DoWindow /K SpeedPlot
 	Display /N=SpeedPlot sum_MeanSpeed vs sum_Label
-	Label left "Speed (µm/min)";DelayUpdate
+	Label left "Speed (Âµm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
 	ModifyGraph zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
@@ -232,6 +237,7 @@ Function Migrate()
 	ModifyGraph hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
+		AppendLayoutObject /W=summaryLayout graph SpeedPlot
 	
 	//average instantaneous velocity variance	
 	For(i=0; i<cond; i+=1) //loop through conditions, 0-based
@@ -253,7 +259,7 @@ Function Migrate()
 	AppendToTable /W=SpeedTable sum_MeanIV,sum_SemIV
 	DoWindow /K IVCatPlot
 	Display /N=IVCatPlot sum_MeanIV vs sum_Label
-	Label left "Variance (µm/min)";DelayUpdate
+	Label left "Variance (Âµm/min)";DelayUpdate
 	SetAxis/A/N=1/E=1 left
 	ErrorBars sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
 	ModifyGraph zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
@@ -263,11 +269,24 @@ Function Migrate()
 	ModifyGraph hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
 	ModifyGraph noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
+		AppendLayoutObject /W=summaryLayout graph IVCatPlot
+	
+	//Tidy summary
+	DoWindow /F summaryLayout
+	//in case these are not captured as prefs
+	If(igorversion()>=7)
+		LayoutPageAction size(-1)=(595, 842), margins(-1)=(18, 18, 18, 18)
+	EndIf
+	ModifyLayout units=0
+	ModifyLayout frame=0,trans=1
+	Execute /Q "Tile"
 	
 	OrderGraphs()
 	Execute "TileWindows/O=1/C"
 	//when we get to the end, print version number (hard-coded)
-	Print "Executed Migrate v1.0"
+	Print "***"
+	Print "Executed Migrate v1.01"
+	Print "***"
 End
 
 //This function will load the tracking data from an Excel Workbook
@@ -308,6 +327,10 @@ Function MakeTracks(pref,tStep,pxSize)
 	Variable nTrack
 	String mName0,newName,plotName,avList,avName,errName
 	Variable i,j
+	
+	String layoutName= pref + "layout"
+	DoWindow /K $layoutName
+	NewLayout /N=$layoutName		//Igor 7 has multipage layouts, using separate layouts for now.
 
 	//cumulative distance and plot over time	
 	plotName=pref + "cdplot"
@@ -345,9 +368,11 @@ Function MakeTracks(pref,tStep,pxSize)
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Cumulative distance (µm)"
+	Label left "Cumulative distance (Âµm)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	AppendLayoutObject /W=$layoutName graph $plotName
 	
 	//instantaneous velocity over time	
 	plotName=pref + "ivplot"
@@ -371,7 +396,7 @@ Function MakeTracks(pref,tStep,pxSize)
 				Killwaves w2
 			Else
 			w2[0]=0	//first point in distance trace is -1, so correct this
-			w2 /=tStep	//make instantaneous velocity (units are µm/min)
+			w2 /=tStep	//make instantaneous velocity (units are Âµm/min)
 			SetScale/P x 0,tStep,"min", w2
 			AppendtoGraph /W=$plotName $newName
 			Endif
@@ -385,9 +410,11 @@ Function MakeTracks(pref,tStep,pxSize)
 	fWaveAverage(avlist, "", 3, 1, AvName, ErrName)
 	AppendToGraph /W=$plotName $avname
 	DoWindow /F $plotName
-	Label left "Instantaneous velocity (µm/min)"
+	Label left "Instantaneous velocity (Âµm/min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	AppendLayoutObject /W=$layoutName graph $plotName
 	
 	plotName=pref + "ivHist"
 	DoWindow /K $plotName	//set up plot
@@ -404,8 +431,10 @@ Function MakeTracks(pref,tStep,pxSize)
 	SetAxis/A/N=1/E=1 left
 	SetAxis bottom 0,2
 	Label left "Frequency"
-	Label bottom "Instantaneous velocity (µm/min)"
+	Label bottom "Instantaneous velocity (Âµm/min)"
 	Killwaves tempwave
+	
+	AppendLayoutObject /W=$layoutName graph $plotName
 	
 	//plot out tracks
 	plotName=pref + "tkplot"
@@ -455,6 +484,8 @@ Function MakeTracks(pref,tStep,pxSize)
 	ModifyGraph mirror=1;DelayUpdate
 	ModifyGraph grid=1
 	
+	AppendLayoutObject /W=$layoutName graph $plotName
+	
 	//calculate d/D directionality ratio
 	plotName=pref + "dDplot"
 	DoWindow /K $plotName	//set up plot
@@ -491,6 +522,8 @@ Function MakeTracks(pref,tStep,pxSize)
 	Label bottom "Time (min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	AppendLayoutObject /W=$layoutName graph $plotName
 	
 	//calculate MSD (overlapping method)
 	plotName=pref + "MSDplot"
@@ -543,6 +576,8 @@ Function MakeTracks(pref,tStep,pxSize)
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 	
+	AppendLayoutObject /W=$layoutName graph $plotName
+	
 	//calculate direction autocorrelation
 	plotName=pref + "DAplot"
 	DoWindow /K $plotName	//set up plot
@@ -562,22 +597,23 @@ Function MakeTracks(pref,tStep,pxSize)
 		vwave /=magwave[p]	//normalise the vectors
 		mName0=ReplaceString("tk",wName0,"DAtemp")
 		newName=ReplaceString("tk",wName0,"DA")	//for results of DA per cell
-		Make/O/N=(len-1,len-2) $mName0=NaN	//matrix for results (nVectors,nÆt)
+		Make/O/N=(len-1,len-2) $mName0=NaN	//matrix for results (nVectors,nâˆ†t)
 		Wave m0=$mName0
-		For(k=0; k<len-1; k+=1)	//by col, this is Æt 0-based
+		For(k=0; k<len-1; k+=1)	//by col, this is âˆ†t 0-based
 			For(j=0; j<len; j+=1)	//by row, this is the starting vector 0-based
 				If((j+(k+1)) < len-1)
 					m0[j][k]= (vwave[j][0] * vwave[j+(k+1)][0])+(vwave[j][1] * vwave[j+(k+1)][1])
 				Endif
 			EndFor
 		EndFor
-		Make/O/N=(len-1) $newName=NaN
+		Make/O/N=(len) $newName=NaN //npnts is len because there will be a new point 0
 		Wave w2=$newName
+		w2[0]=1
 		//extract cell average cos(theta) per time interval
 		For(k=0; k<len-1; k+=1)
 			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
 			Wavestats/Q w1	//mean function requires zapnans	
-			w2[k]=v_avg
+			w2[k+1]=v_avg
 		EndFor
 		KillWaves m0
 		SetScale/P x 0,tStep,"min", w2
@@ -596,6 +632,8 @@ Function MakeTracks(pref,tStep,pxSize)
 	Label bottom "Time (min)"
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
+	
+	AppendLayoutObject /W=$layoutName graph $plotName
 	
 	//Plot these summary windows at the end
 	avname="W_Ave_cd_" + ReplaceString("_",pref,"")
@@ -637,6 +675,17 @@ Function MakeTracks(pref,tStep,pxSize)
 	DoWindow /F DAPlot
 	ErrorBars $avname Y,wave=($ErrName,$ErrName)
 	ModifyGraph lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	
+	//Tidy report
+	DoWindow /F $layoutName
+	//in case these are not captured as prefs
+	If(igorversion()>=7)
+		LayoutPageAction size(-1)=(595, 842), margins(-1)=(18, 18, 18, 18)
+	EndIf
+	ModifyLayout units=0
+	ModifyLayout frame=0,trans=1
+	Execute /Q "Tile"
+	TextBox/C/N=text0/F=0/A=RB/X=0.00/Y=0.00 ReplaceString("_",pref,"")
 End
 
 Function OrderGraphs()
