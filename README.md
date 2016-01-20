@@ -1,7 +1,7 @@
 # CellMigration
 Analysis of cell migration in Igor Pro
 
-This is a set of functions to load and analyse cell migration in Igor.
+This is a set of functions to load particle tracks and analyse cell migration in Igor.
 Particles are tracked manually in ImageJ/FIJI.
 
 Migrate function
@@ -16,7 +16,17 @@ This function will trigger the load and the analysis of cell migration via two f
 * <code>MakeTracks()</code> - does the analysis
 
 The dialog asks the user to name the condition prefix, e.g. "Ctrl_". Quotes and underscore are required.<br />
-User picks the Excel workbook and clicks OK on LoadData window. Igor Will do the rest!
+User picks the Excel workbook and clicks OK on LoadData window. Igor will do the rest!
+
+It will calculate and display the following:
+* Cumulative distance over time
+* Instantaneous velocity over time, histogram of velocities
+* Tracks of all cells for visualisation
+* Directionality ratio (d/D) over time
+* Mean squared displacement
+* Direction autocorrelation.
+
+Reports are made for each condition and also a summary layout comparing all conditions.
 
 ### Excel formatting
 
