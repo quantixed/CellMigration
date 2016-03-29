@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.01		// version number of Migrate()
+#pragma version=1.02		// version number of Migrate()
 #include <Waves Average>
 
 //LoadMigration contains 3 procedures to analyse cell migration in IgorPro
@@ -285,7 +285,7 @@ Function Migrate()
 	Execute "TileWindows/O=1/C"
 	//when we get to the end, print version number (hard-coded)
 	Print "***"
-	Print "Executed Migrate v1.01"
+	Print "Executed Migrate v", GetProcedureVersion("LoadMigration.ipf")
 	Print "***"
 End
 
@@ -698,4 +698,28 @@ Function OrderGraphs()
 		String name = StringFromList(i, list)
 		DoWindow /F $name
 	endfor
+End
+
+// Function from aclight
+Function GetProcedureVersion(procedureWinTitleStr)
+	String procedureWinTitleStr
+ 
+	// By default, all procedures are version 1.00 unless
+	// otherwise specified.
+	Variable version = 1.00
+	Variable versionIfError = NaN
+ 
+	String procText = ProcedureText("", 0, procedureWinTitleStr)
+	if (strlen(procText) <= 0)
+		return versionIfError		// Procedure window doesn't exist.
+	endif
+ 
+	String regExp = "(?i)(?:^#pragma|\\r#pragma)(?:[ \\t]+)version(?:[\ \t]*)=(?:[\ \t]*)([\\d.]*)"
+ 
+	String versionFoundStr
+	SplitString/E=regExp procText, versionFoundStr
+	if (V_flag == 1)
+		version = str2num(versionFoundStr)
+	endif
+	return version	
 End
