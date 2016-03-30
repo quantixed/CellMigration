@@ -19,6 +19,11 @@
 // G - 6 - velocity
 // H - 7 - pixel value
 
+// Menu item for easy execution
+Menu "Macros"
+	"Cell Migration...",  Migrate()
+End
+
 // Colours are taken from Paul Tol SRON stylesheet
 // Define colours
 StrConstant SRON_1 = "0x4477aa;"
@@ -34,29 +39,33 @@ StrConstant SRON_10 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc7
 StrConstant SRON_11 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0x882255; 0xaa4499;"
 StrConstant SRON_12 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0xaa4466; 0x882255; 0xaa4499;"
 
+//// @param hex		variable in hexadecimal
 Function hexcolor_red(hex)
 	Variable hex
 	return byte_value(hex, 2) * 2^8
 End
 
+//// @param hex		variable in hexadecimal
 Function hexcolor_green(hex)
 	Variable hex
 	return byte_value(hex, 1) * 2^8
 End
 
+//// @param hex		variable in hexadecimal
 Function hexcolor_blue(hex)
 	Variable hex
 	return byte_value(hex, 0) * 2^8
 End
 
+//// @param data	variable in hexadecimal
+//// @param byte	variable to determine R, G or B value
 Static Function byte_value(data, byte)
 	Variable data
 	Variable byte
 	return (data & (0xFF * (2^(8*byte)))) / (2^(8*byte))
 End
 
-
-//Loads the data and performs migration analysis
+// Loads the data and performs migration analysis
 Function Migrate()
 	
 	Variable cond = 2
@@ -69,12 +78,12 @@ Function Migrate()
 	DoPrompt "Specify", cond, tStep, pxSize
 	
 	// kill all windows and waves before we start
-	String fulllist = WinList("*", ";","WIN:3")
+	String fullList = WinList("*", ";","WIN:3")
 	String name
 	Variable i
  
-	for(i = 0; i < ItemsInList(fulllist); i += 1)
-		name = StringFromList(i, fulllist)
+	for(i = 0; i < ItemsInList(fullList); i += 1)
+		name = StringFromList(i, fullList)
 		DoWindow/K $name		
 	endfor
 	
@@ -110,28 +119,23 @@ Function Migrate()
 
 	Make/O/N=(cond,3) colorwave
 	Make/O/T/N=(cond) sum_Label
-	Make/O/N=(cond) sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
-	Make/O/N=(cond) sum_MeanIV,sum_SemIV
+	Make/O/N=(cond) sum_MeanSpeed, sum_SemSpeed, sum_NSpeed
+	Make/O/N=(cond) sum_MeanIV, sum_SemIV
 	
-	String pref,lab
+	String pref, lab
 	Variable color
-	Variable /G gR,gG,gB
+	Variable /G gR, gG, gB
 	
-	DoWindow /K cdPlot
-	Display /N=cdPlot
-	DoWindow /K ivPlot
-	Display /N=ivPlot
-	DoWindow /K ivHPlot
-	Display /N=ivHPlot
-	DoWindow /K dDPlot
-	Display /N=dDPlot
-	DoWindow /K MSDPlot
-	Display /N=MSDPlot
-	DoWindow /K DAPlot
-	Display /N=DAPlot
+	fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
+	
+	for(i = 0; i < 6; i += 1)
+		name = StringFromList(i, fullList)
+		DoWindow/K $name
+		Display /N=$name		
+	endfor
 	
 	for(i = 1; i < cond+1; i += 1)
-		Prompt pref, "Experimental condition e.g. \"ctrl_\", \"tacc3_\". Quotes + underscore required"
+		Prompt pref, "Experimental condition e.g. \"Ctrl_\", \"Test_\". Quotes + underscore required"
 		DoPrompt "Describe conditions", pref
 		
 		if(V_Flag)
@@ -308,6 +312,9 @@ Function LoadMigration(pref)
 		wList = wavelist(prefix + "*",";","")	// make matrices
 		Concatenate/O/KILL wList, $prefix
 	endfor
+	
+	Print "***\r  Condition", pref, "was loaded from", S_path,"\r  ***"
+	
 End
 
 // This function will make cumulative distance waves for each cell. They are called cd_*
@@ -531,6 +538,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	plotName = pref + "MSDplot"
 	DoWindow /K $plotName	//setup plot
 	Display /N=$plotName
+	
 	wList0 = WaveList("tk_" + pref + "*", ";","")
 	nWaves = ItemsInList(wList0)
 	Variable k
@@ -584,9 +592,6 @@ Function MakeTracks(pref,tStep,pxSize)
 	plotName = pref + "DAplot"
 	DoWindow /K $plotName	// setup plot
 	Display /N=$plotName
-	//could delete these two lines?
-	wList0 = WaveList("tk_" + pref + "*", ";","")
-	nWaves = ItemsInList(wList0)
 	
 	for(i = 0; i < nWaves; i += 1)
 		wName0 = StringFromList(i,wList0)			// tk wave
@@ -594,12 +599,12 @@ Function MakeTracks(pref,tStep,pxSize)
 		len=DimSize(w0,0)	// len is number of frames
 		Make/O/N=(len-1,2) vwave	// make vector wave. nVectors is len-1
 		vwave = w0[p+1][q] - w0[p][q]
-		Make/O/D/N=(len-1) magwave	// make magnitude wave
+		Make/O/D/N=(len-1) magwave	// make magnitude wave. nMagnitudes is len-1
 		magwave = sqrt((vwave[p][0]^2) + (vwave[p][1]^2))
 		vwave /= magwave[p]	// normalise the vectors
 		mName0 = ReplaceString("tk",wName0,"DAtemp")
 		newName = ReplaceString("tk",wName0,"DA")	// for results of DA per cell
-		Make/O/N=(len-1,len-2) $mName0=NaN	// matrix for results (nVectors,nÆt)
+		Make/O/N=(len-1,len-2) $mName0 = NaN	// matrix for results (nVectors,nÆt)
 		WAVE m0 = $mName0
 		for(k = 0; k < len-1; k += 1)	// by col, this is Æt 0-based
 			for(j = 0; j < len; j += 1)	// by row, this is the starting vector 0-based
@@ -608,11 +613,11 @@ Function MakeTracks(pref,tStep,pxSize)
 				endif
 			endfor
 		endfor
-		Make/O/N=(len) $newName=NaN // npnts is len because there will be a new point 0
+		Make/O/N=(len-1) $newName = NaN // npnts is len-1 not len-2 because of 1st point = 0
 		Wave w2 = $newName
 		w2[0] = 1
 		// extract cell average cos(theta) per time interval
-		for(k = 0; k < len-1; k += 1)
+		for(k = 0; k < len-2; k += 1)
 			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
 			Wavestats/Q w1	//mean function requires zapnans	
 			w2[k+1] = v_avg
@@ -629,7 +634,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph /W=$plotName $avName
 	DoWindow /F $plotName
-	SetAxis left 0,1
+	SetAxis left -1,1
 	Label left "Direction autocorrelation"
 	Label bottom "Time (min)"
 	ErrorBars $avName Y,wave=($errName,$errName)
