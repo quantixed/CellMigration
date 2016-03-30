@@ -2,7 +2,7 @@
 Analysis of 2D cell migration in Igor Pro
 
 This is a set of functions to load particle tracks and analyse 2D cell migration in Igor.
-Particles are tracked manually in ImageJ/FIJI using MTrackJ.
+Particles are tracked manually in ImageJ/FIJI using Manual Tracking.
 
 Migrate function
 ----------------
