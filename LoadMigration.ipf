@@ -508,15 +508,19 @@ Function MakeTracks(pref,tStep,pxSize)
 	for(i = 0; i < nWaves; i += 1)
 		wName0 = StringFromList(i,wList0)			// tk wave
 		wName1 = ReplaceString("tk",wName0,"cd")	// cd wave
-		WAVE w0=$wName0
-		WAVE w1=$wName1
+		WAVE w0 = $wName0
+		WAVE w1 = $wName1
 		newName = ReplaceString("tk",wName0,"dD")
 		Duplicate/O w1 $newName
 		WAVE w2=$newName
 		len = numpnts(w2)
-		w2 = 1
+		w2[0] = NaN	// d/D at point 0 is not a number
 		for(j = 1; j < len; j += 1)
-			w2[j]= sqrt(w0[j][0]^2 + w0[j][1]^2) / w1[j]
+			if(w1[j]==0)
+				w2[j]=1
+			else
+				w2[j]= sqrt(w0[j][0]^2 + w0[j][1]^2) / w1[j]
+			endif
 		endfor
 		AppendtoGraph /W=$plotName w2
 	Endfor
@@ -558,10 +562,10 @@ Function MakeTracks(pref,tStep,pxSize)
 				endif
 			endfor
 		endfor
-		Make/O/N=(len+1) $newName=NaN
+		Make/O/N=(len) $newName=NaN
 		WAVE w2 = $newName
 		// extract cell MSDs per time point
-		for(k = 0;k < len; k += 1)
+		for(k = 0; k < len-1; k += 1)
 			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
 			Wavestats/Q w1			
 			w2[k+1] = v_avg
@@ -613,7 +617,7 @@ Function MakeTracks(pref,tStep,pxSize)
 				endif
 			endfor
 		endfor
-		Make/O/N=(len-1) $newName = NaN // npnts is len-1 not len-2 because of 1st point = 0
+		Make/O/N=(len-1) $newName = NaN // npnts is len-1 not len-2 because of 1st point = 1
 		Wave w2 = $newName
 		w2[0] = 1
 		// extract cell average cos(theta) per time interval
