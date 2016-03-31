@@ -2,16 +2,14 @@
 Analysis of 2D cell migration in Igor Pro
 
 This is a set of functions to load particle tracks and analyse 2D cell migration in Igor.
-Particles are tracked manually in ImageJ/FIJI using Manual Tracking.
 
-Migrate function
-----------------
+Workflow
+--------
 
-LoadMigration.ipf contains three procedures to analyse cell migration in IgorPro.<br />
-Save a copy in your *User Procedures* folder. Open in Igor and compile.<br />
-Use ImageJ to track the cells. Outputs from tracking are saved in sheets in an Excel Workbook, 1 workbook per condition.<br />
-Go to Macros>Cell Migration... or Execute <code>Migrate()</code>.<br />
-This function will trigger the load and the analysis of 2D cell migration via a variety of functions.
+1. Cells are tracked manually in ImageJ/FIJI using [Manual Tracking](http://rsbweb.nih.gov/ij/plugins/track/track.html).
+2. Organise the outputs in an Excel Workbook, 1 workbook per condition*.
+3. Save a copy of LoadMigration.ipf in your *User Procedures* folder. Open in Igor and compile.
+4. Go to Macros>Cell Migration... or Execute <code>Migrate()</code> in the Command Window <code>cmd + j</code>.
 
 The dialog asks the user how many conditions (workbooks) are to be loaded and analysed.<br />
 The user is then asked to name the condition prefix, e.g. "Ctrl_". Quotes and underscore are required.<br />
@@ -42,3 +40,9 @@ NOTE: no headers in Excel file. Keep data to columns A-H, max of 1000 rows.
 
 ### Colour palettes
 Colours are taken from Paul Tol SRON stylesheet. Maximum of 12 conditions are handled.
+
+### Compatability
+Written for IgorPro 7 with back-compatability for IgorPro 6.37.
+
+### Notes
+\*  Suggestion: each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
