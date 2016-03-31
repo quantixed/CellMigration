@@ -7,7 +7,7 @@ Workflow
 --------
 
 1. Cells are tracked manually in ImageJ/FIJI using [Manual Tracking](http://rsbweb.nih.gov/ij/plugins/track/track.html).
-2. Organise the outputs in an Excel Workbook, 1 workbook per condition*.
+2. Organise the outputs in an Excel Workbook*.
 3. Save a copy of LoadMigration.ipf in your *User Procedures* folder. Open in Igor and compile.
 4. Go to Macros>Cell Migration... or Execute <code>Migrate()</code> in the Command Window <code>cmd + j</code>.
 
@@ -45,4 +45,4 @@ Colours are taken from Paul Tol SRON stylesheet. Maximum of 12 conditions are ha
 Written for IgorPro 7 with back-compatability for IgorPro 6.37.
 
 ### Notes
-\*  Suggestion: each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
+\*  Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
