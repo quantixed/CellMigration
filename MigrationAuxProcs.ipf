@@ -20,8 +20,10 @@ Function StitchIV()
 		endif
 	endfor
 	
-	DoWindow /K cIVLayout
-	NewLayout /N=cIVLayout
+	DoWindow/K cIVLayout
+	NewLayout/N=cIVLayout
+	DoWindow/K cIVPlot
+	Display/N=cIVPlot
 	
 	Variable nWaves,aValue
 	String avList,avName,errName
@@ -60,14 +62,24 @@ Function StitchIV()
 		fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 		AppendToGraph /W=$plotName $avName
 		DoWindow /F $plotName
-		Label left "Instantaneous velocity (µm/min)"
 		ErrorBars $avName Y,wave=($ErrName,$ErrName)
 		ModifyGraph lsize($avName)=2,rgb($avName)=(0,0,0)
 		SetAxis left 0,3
 		Label left "Instantaneous velocity (µm/min)"
 		Label bottom "Time (min)"
-		AppendLayoutObject /W=cIVLayout graph $plotName	
+		AppendLayoutObject /W=cIVLayout graph $plotName
+		
+		AppendToGraph /W=cIVPlot $avName
+		DoWindow /F cIVPlot
+		ErrorBars $avName Y,wave=($ErrName,$ErrName)
+		ModifyGraph lsize($avName)=2,rgb($avName)=(colorwave[i][0],colorwave[i][1],colorwave[i][2])
 	endfor
+	DoWindow /F cIVPlot
+	SetAxis left 0,2
+	Label left "Instantaneous velocity (µm/min)"
+	Label bottom "Time (min)"
+	AppendLayoutObject /W=cIVLayout graph $plotName
+	AppendLayoutObject /W=cIVLayout graph cIVPlot
 	// Tidy summary layout
 	DoWindow /F cIVLayout
 	// in case these are not captured as prefs
