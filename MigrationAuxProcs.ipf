@@ -46,7 +46,7 @@ Function StitchIV()
 				// wave scaling from 1st wave use for concat wave
 				Duplicate/O/FREE w0 w0s
 				Duplicate/O/FREE w1 w1s
-				aValue = mean(w0s,80,120)
+				aValue = mean(w0s,pnt2x(w0s,numpnts(w0s)-6),pnt2x(w0s,numpnts(w0s)-1))
 				w0s /=aValue
 				w1s /=aValue
 				newName = "c_" + ReplaceString("pre",wName0,"_")
@@ -78,7 +78,6 @@ Function StitchIV()
 	SetAxis left 0,2
 	Label left "Instantaneous velocity (µm/min)"
 	Label bottom "Time (min)"
-	AppendLayoutObject /W=cIVLayout graph $plotName
 	AppendLayoutObject /W=cIVLayout graph cIVPlot
 	// Tidy summary layout
 	DoWindow /F cIVLayout
@@ -88,5 +87,5 @@ Function StitchIV()
 #endif
 	ModifyLayout units=0
 	ModifyLayout frame=0,trans=1
-	Execute /Q "Tile"
+	Execute /Q "Tile/A=(4,3)"
 End
