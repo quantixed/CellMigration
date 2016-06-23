@@ -46,4 +46,5 @@ Written for IgorPro 7 with back-compatability for IgorPro 6.37.
 
 ### Notes
 \*  Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
+
 \* For experiments where a manipulation is done partway through the experiment (e.g. adding a drug). Suggest that pre and post conditions are kept in separate workbooks. Analyzing them will give statistics for each condition (pre and post). If you'd like to stitch the tracks together to analyze data per cell, as long as the tracks are named consistently and the conditions feature *pre* and *post*, you can use `MigrationAuxProcs.ipf` to do this. Execute `StitchIV()` to generate a report of this type.
