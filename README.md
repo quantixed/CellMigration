@@ -8,8 +8,8 @@ Workflow
 
 1. Cells are tracked manually in ImageJ/FIJI using [Manual Tracking](http://rsbweb.nih.gov/ij/plugins/track/track.html).
 2. Organise the outputs in an Excel Workbook*.
-3. Save a copy of LoadMigration.ipf in your *User Procedures* folder. Open in Igor and compile.
-4. Go to Macros>Cell Migration... or Execute <code>Migrate()</code> in the Command Window <code>cmd + j</code>.
+3. Save a copy of `LoadMigration.ipf` in *Wavemetrics/Igor Pro x User Files/User Procedures*. Open in Igor and compile.
+4. Go to Macros>Cell Migration... or Execute `Migrate()` in the Command Window `cmd + j`.
 
 The dialog asks the user how many conditions (workbooks) are to be loaded and analysed.<br />
 The user is then asked to name the condition prefix, e.g. "Ctrl_". Quotes and underscore are required.<br />
@@ -46,3 +46,4 @@ Written for IgorPro 7 with back-compatability for IgorPro 6.37.
 
 ### Notes
 \*  Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
+\* For experiments where a manipulation is done partway through the experiment (e.g. adding a drug). Suggest that pre and post conditions are kept in separate workbooks. Analyzing them will give statistics for each condition (pre and post). If you'd like to stitch the tracks together to analyze data per cell, as long as the tracks are named consistently and the conditions feature *pre* and *post*, you can use `MigrationAuxProcs.ipf` to do this. Execute `StitchIV()` to generate a report of this type.
