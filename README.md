@@ -12,10 +12,11 @@ Workflow
 4. Go to Macros>Cell Migration... or Execute `Migrate()` in the Command Window `cmd + j`.
 
 The dialog asks the user how many conditions (workbooks) are to be loaded and analysed.<br />
-The user is then asked to name the condition prefix, e.g. "Ctrl_". Quotes and underscore are required.<br />
+The user is then asked to name the condition prefix, e.g. "Ctrl".<br />
 User picks the Excel workbook and clicks OK on LoadData window. Repeat for other conditions. Igor will do the rest!
 
 It will calculate and display the following:
+
 * Cumulative distance over time
 * Instantaneous velocity over time, histogram of velocities
 * Tracks of all cells for visualisation
@@ -42,7 +43,7 @@ NOTE: no headers in Excel file. Keep data to columns A-H, max of 1000 rows.
 Colours are taken from Paul Tol SRON stylesheet. Maximum of 12 conditions are handled.
 
 ### Compatability
-Written for IgorPro 7 with back-compatability for IgorPro 6.37.
+Written for IgorPro 7. From v 1.03 there is no back-compatability for IgorPro 6.37.
 
 ### Notes
 \*  Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.

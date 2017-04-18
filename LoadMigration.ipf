@@ -373,18 +373,18 @@ Function MakeTracks(pref,tStep,pxSize)
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
-		Duplicate/O/R=[][5] m0, w0	// distance
-		Duplicate/O/R=[][1] m0, w1	// cell number
-		Redimension/N=-1 w0, w1
+		Duplicate/O/RMD=[][5,5] m0, w0	// distance
+		Duplicate/O/RMD=[][1,1] m0, w1	// cell number
+		Redimension/N=-1 w0, w1 // make 1D
 		nTrack = WaveMax(w1)	// find maximum track number
 		for(j = 1; j < (nTrack+2); j += 1)	// index is 1-based, plus 2 was needed.
 			newName = "cd_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 $newName
 			WAVE w2 = $newName
-			w2 = (w1==j) ? w0 : NaN
+			w2 = (w1 == j) ? w0 : NaN
 			WaveTransform zapnans w2
 			if(numpnts(w2)==0)
-				Killwaves w2
+				KillWaves/Z w2
 			else
 				w2[0] = 0	// first point in distance trace is -1 so correct this
 				Integrate/METH=0 w2	// make cumulative distance
@@ -413,15 +413,15 @@ Function MakeTracks(pref,tStep,pxSize)
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
-		Duplicate/O/R=[][5] m0, w0	// distance
-		Duplicate/O/R=[][1] m0, w1	// cell number
-		Redimension/N=-1 w0, w1
+		Duplicate/O/RMD=[][5,5] m0, w0	// distance
+		Duplicate/O/RMD=[][1,1] m0, w1	// cell number
+		Redimension/N=-1 w0, w1 // make 1D
 		nTrack = WaveMax(w1)	// find maximum track number
 		for(j = 1; j < (nTrack+2); j += 1)	// index is 1-based, plus 2 was needed.
 			newName = "iv_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 $newName
 			WAVE w2=$newName
-			w2 = (w1==j) ? w0 : NaN
+			w2 = (w1 == j) ? w0 : NaN
 			WaveTransform zapnans w2
 			if(numpnts(w2)==0)
 				Killwaves w2
@@ -475,15 +475,15 @@ Function MakeTracks(pref,tStep,pxSize)
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
-		Duplicate/O/R=[][3] m0, w0	//x pos
-		Duplicate/O/R=[][4] m0, w1	//y pos
-		Duplicate/O/R=[][1] m0, w2	//track number
+		Duplicate/O/RMD=[][3,3] m0, w0	//x pos
+		Duplicate/O/RMD=[][4,4] m0, w1	//y pos
+		Duplicate/O/RMD=[][1,1] m0, w2	//track number
 		Redimension/N=-1 w0, w1,w2		
 		nTrack=WaveMax(w2)	//find maximum track no.
 		for(j = 1; j < (nTrack+1); j += 1)	//index is 1-based
 			newName = "tk_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 w3
-			w3 = (w2==j) ? w3 : NaN
+			w3 = (w2 == j) ? w3 : NaN
 			WaveTransform zapnans w3
 			if(numpnts(w3)==0)
 				Killwaves w3
