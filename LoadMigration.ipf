@@ -68,6 +68,8 @@ End
 // Loads the data and performs migration analysis
 Function Migrate()
 	
+	SetDataFolder root:
+	
 	Variable cond = 2
 	Variable tStep = 20
 	Variable pxSize = 0.32
@@ -79,15 +81,24 @@ Function Migrate()
 	
 	// kill all windows and waves before we start
 	String fullList = WinList("*", ";","WIN:3")
+	Variable allItems = ItemsInList(fullList)
 	String name
 	Variable i
  
-	for(i = 0; i < ItemsInList(fullList); i += 1)
+	for(i = 0; i < allItems; i += 1)
 		name = StringFromList(i, fullList)
 		DoWindow/K $name		
 	endfor
 	
+	// Kill waves in root
 	KillWaves/A/Z
+	// Look for data folders
+	DFREF dfr = GetDataFolderDFR()
+	allItems = CountObjectsDFR(dfr, 4)
+	for(i = 0; i < allItems; i += 1)
+		name = GetIndexedObjNameDFR(dfr, 4, i)
+		KillDataFolder $name		
+	endfor
 	
 	// Pick colours from SRON palettes
 	String pal
@@ -124,7 +135,7 @@ Function Migrate()
 	
 	String pref, lab
 	Variable color
-	Variable /G gR, gG, gB
+	Variable/G gR, gG, gB
 	
 	fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
 	
@@ -134,8 +145,11 @@ Function Migrate()
 		Display/N=$name/HIDE=1		
 	endfor
 	
-	for(i = 1; i < cond+1; i += 1)
-		Prompt pref, "Experimental condition e.g. \"Ctrl_\", \"Test_\". Quotes + underscore required"
+	String dataFolderName = "root:data"
+	NewDataFolder/O $dataFolderName // make root:data: but don't put anything in it yet
+	
+	for(i = 0; i < cond; i += 1)
+		Prompt pref, "Experimental condition e.g. \"Ctrl\", \"OE24hGFP\"."
 		DoPrompt "Describe conditions", pref
 		
 		if(V_Flag)
@@ -151,26 +165,30 @@ Function Migrate()
 		endif
 		
 		lab = ReplaceString("_",pref,"")
-		sum_Label[i-1] = lab
+		sum_Label[i] = lab
 		
 		// specify colours
-		if(cond < 13)
-			color = str2num(StringFromList(i-1,pal))
+		if(cond < 12)
+			color = str2num(StringFromList(i,pal))
 			gR = hexcolor_red(color)
 			gG = hexcolor_green(color)
 			gB = hexcolor_blue(color)
 		else
-			color = str2num(StringFromList(round((i-1)/12),pal))
+			color = str2num(StringFromList(round((i)/12),pal))
 			gR = hexcolor_red(color)
 			gG = hexcolor_green(color)
 			gB = hexcolor_blue(color)
 		endif
-		colorwave[i-1][0] = gR // offset by one because cond is 1-based
-		colorwave[i-1][1] = gG
-		colorwave[i-1][2] = gB
+		colorwave[i][0] = gR
+		colorwave[i][1] = gG
+		colorwave[i][2] = gB
+		// make data folder
+		dataFolderName = "root:data:" + RemoveEnding(pref)
+		NewDataFolder/O/S $dataFolderName
 		// run other procedures
 		LoadMigration(pref)
 		MakeTracks(pref,tStep,pxSize)
+		SetDataFolder root:
 	endfor
 	
 	DoWindow/K summaryLayout
@@ -196,26 +214,29 @@ Function Migrate()
 		AppendLayoutObject /W=summaryLayout graph dDPlot
 	ModifyGraph/W=MSDPlot log=1
 	SetAxis/W=MSDPlot/A/N=1 left
-	String wName = StringFromList(0,WaveList("W_Ave*",";","WIN:MSDPlot"))
-	SetAxis/W=MSDPlot bottom tStep,((numpnts($wName)*tStep)/2)
+	Wave w = WaveRefIndexed("MSDPlot",0,1)
+	SetAxis/W=MSDPlot bottom tStep,((numpnts(w) * tStep)/2)
 	Label/W=MSDPlot left "MSD"
 	Label/W=MSDPlot bottom "Time (min)"
 		AppendLayoutObject /W=summaryLayout graph MSDPlot
 	SetAxis/W=DAPlot left 0,1
-	SetAxis/W=DAPlot bottom 0,((numpnts($wName)*tStep)/2)
+	Wave w = WaveRefIndexed("DAPlot",0,1)
+	SetAxis/W=DAPlot bottom 0,((numpnts(w)*tStep)/2)
 	Label/W=DAPlot left "Direction autocorrelation"
 	Label/W=DAPlot bottom "Time (min)"
 		AppendLayoutObject /W=summaryLayout graph DAPlot
 	
 	// average the speed data from all conditions	
-	String wList, newName
+	String wList, newName, wName
 	Variable nTracks, last, j
 	
-	for(i = 0; i < cond; i += 1) // loop through conditions, 0-based
+	for(i = 0; i < cond; i += 1)
 		pref = sum_Label[i] + "_"
+		dataFolderName = "root:data:" + RemoveEnding(pref)
+		SetDataFolder $dataFolderName
 		wList = WaveList("cd_" + pref + "*", ";","")
 		nTracks = ItemsInList(wList)
-		newName = "Sum_Speed_" + ReplaceString("_",pref,"")
+		newName = "sum_Speed_" + RemoveEnding(pref)
 		Make/O/N=(nTracks) $newName
 		WAVE w0 = $newName
 		for(j = 0; j < nTracks; j += 1)
@@ -248,9 +269,11 @@ Function Migrate()
 	// average instantaneous velocity variances
 	for(i = 0; i < cond; i += 1) // loop through conditions, 0-based
 		pref = sum_Label[i] + "_"
+		dataFolderName = "root:data:" + RemoveEnding(pref)
+		SetDataFolder $dataFolderName
 		wList = WaveList("iv_" + pref + "*", ";","")
 		nTracks = ItemsInList(wList)
-		newName = "Sum_ivVar_" + ReplaceString("_",pref,"")
+		newName = "sum_ivVar_" + ReplaceString("_",pref,"")
 		Make/O/N=(nTracks) $newName
 		WAVE w0 = $newName
 		for(j = 0; j < nTracks; j += 1)
@@ -276,6 +299,8 @@ Function Migrate()
 	ModifyGraph/W=IVCatPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
 	ErrorBars/W=IVCatPlot sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
 		AppendLayoutObject /W=summaryLayout graph IVCatPlot
+	
+	SetDataFolder root:
 	
 	// Tidy summary layout
 	DoWindow/F summaryLayout
@@ -308,7 +333,7 @@ Function LoadMigration(pref)
 		sheet = StringFromList(i,S_Value)
 		prefix = pref + num2str(i)
 		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/P=path1 S_fileName
-		wList = wavelist(prefix + "*",";","")	// make matrices
+		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
 		Concatenate/O/KILL wList, $prefix
 	endfor
 	
@@ -324,9 +349,9 @@ Function MakeTracks(pref,tStep,pxSize)
 	String pref
 	Variable tStep, pxSize
 	
-	NVAR cR = gR
-	NVAR cG = gG
-	NVAR cB = gB
+	NVAR cR = root:gR
+	NVAR cG = root:gG
+	NVAR cB = root:gB
 	
 	String wList0 = WaveList(pref + "*",";","") // find all matrices
 
