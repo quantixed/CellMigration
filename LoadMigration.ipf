@@ -39,26 +39,26 @@ StrConstant SRON_10 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc7
 StrConstant SRON_11 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0x882255; 0xaa4499;"
 StrConstant SRON_12 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0xaa4466; 0x882255; 0xaa4499;"
 
-//// @param hex		variable in hexadecimal
+/// @param hex		variable in hexadecimal
 Function hexcolor_red(hex)
 	Variable hex
 	return byte_value(hex, 2) * 2^8
 End
 
-//// @param hex		variable in hexadecimal
+/// @param hex		variable in hexadecimal
 Function hexcolor_green(hex)
 	Variable hex
 	return byte_value(hex, 1) * 2^8
 End
 
-//// @param hex		variable in hexadecimal
+/// @param hex		variable in hexadecimal
 Function hexcolor_blue(hex)
 	Variable hex
 	return byte_value(hex, 0) * 2^8
 End
 
-//// @param data	variable in hexadecimal
-//// @param byte	variable to determine R, G or B value
+/// @param data	variable in hexadecimal
+/// @param byte	variable to determine R, G or B value
 Static Function byte_value(data, byte)
 	Variable data
 	Variable byte
@@ -87,7 +87,7 @@ Function Migrate()
  
 	for(i = 0; i < allItems; i += 1)
 		name = StringFromList(i, fullList)
-		DoWindow/K $name		
+		KillWindow/Z $name		
 	endfor
 	
 	// Kill waves in root
@@ -141,7 +141,7 @@ Function Migrate()
 	
 	for(i = 0; i < 6; i += 1)
 		name = StringFromList(i, fullList)
-		DoWindow/K $name
+		KillWindow/Z $name
 		Display/N=$name/HIDE=1		
 	endfor
 	
@@ -191,7 +191,7 @@ Function Migrate()
 		SetDataFolder root:
 	endfor
 	
-	DoWindow/K summaryLayout
+	KillWindow/Z summaryLayout
 	NewLayout/N=summaryLayout
 	
 	// Tidy up summary windows
@@ -242,17 +242,17 @@ Function Migrate()
 		for(j = 0; j < nTracks; j += 1)
 			wName = StringFromList(j,wList)
 			Wave w1 = $wName
-			last = numpnts(w1)	// finds last point (max cumulative distance)
-			w0[j]=w1[last-1]/((last-1)*tStep)	// calculates speed
+			last = numpnts(w1) - 1	// finds last row (max cumulative distance)
+			w0[j] = w1[last]/(last*tStep)	// calculates speed
 		endfor
 		WaveStats/Q w0
 		sum_MeanSpeed[i] = V_avg
 		sum_SemSpeed[i] = V_sem
 		sum_NSpeed[i] = V_npnts
 	endfor
-	DoWindow/K SpeedTable
+	KillWindow/Z SpeedTable
 	Edit/N=SpeedTable/HIDE=1 sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
-	DoWindow/K SpeedPlot
+	KillWindow/Z SpeedPlot
 	Display/N=SpeedPlot/HIDE=1 sum_MeanSpeed vs sum_Label
 	Label/W=SpeedPlot left "Speed (µm/min)"
 	SetAxis/W=SpeedPlot/A/N=1/E=1 left
@@ -286,7 +286,7 @@ Function Migrate()
 		sum_SemIV[i] = V_sem
 	endfor
 	AppendToTable/W=SpeedTable sum_MeanIV,sum_SemIV
-	DoWindow/K IVCatPlot
+	KillWindow/Z IVCatPlot
 	Display/N=IVCatPlot/HIDE=1 sum_MeanIV vs sum_Label
 	Label/W=IVCatPlot left "Variance (µm/min)"
 	SetAxis/W=IVCatPlot/A/N=1/E=1 left
@@ -318,13 +318,14 @@ Function Migrate()
 End
 
 // This function will load the tracking data from an Excel Workbook
-//// @param pref	prefix for excel workbook e.g. "ctrl_"
+/// @param pref	prefix for excel workbook e.g. "ctrl_"
 Function LoadMigration(pref)
 	String pref
 	
 	String sheet, prefix, wList
 	Variable i
 	
+	// opens a dialog to specify xls file. Reads sheets and then loads each.
 	XLLoadWave/J=1
 	Variable moviemax = ItemsInList(S_value)
 	NewPath/O/Q path1, S_path
@@ -342,9 +343,9 @@ Function LoadMigration(pref)
 End
 
 // This function will make cumulative distance waves for each cell. They are called cd_*
-//// @param pref	prefix for excel workbook e.g. "ctrl_"
-//// @param tStep	timestep. Interval/frame rate of movie.
-//// @param pxSize	pixel size. xy scaling.
+/// @param pref	prefix for excel workbook e.g. "ctrl_"
+/// @param tStep	timestep. Interval/frame rate of movie.
+/// @param pxSize	pixel size. xy scaling.
 Function MakeTracks(pref,tStep,pxSize)
 	String pref
 	Variable tStep, pxSize
@@ -362,12 +363,12 @@ Function MakeTracks(pref,tStep,pxSize)
 	Variable i, j
 	
 	String layoutName = pref + "layout"
-	DoWindow/K $layoutName
+	KillWindow/Z $layoutName		// Kill the layout if it exists
 	NewLayout/N=$layoutName		// Igor 7 has multipage layouts, using separate layouts for now.
 
 	// cumulative distance and plot over time	
-	plotName=pref + "cdplot"
-	DoWindow/K $plotName	// set up plot
+	plotName = pref + "cdplot"
+	KillWindow/Z $plotName	// set up plot
 	Display/N=$plotName/HIDE=1
 
 	for(i = 0; i < nWaves; i += 1)
@@ -381,10 +382,10 @@ Function MakeTracks(pref,tStep,pxSize)
 			newName = "cd_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 $newName
 			WAVE w2 = $newName
-			w2 = (w1 == j) ? w0 : NaN
+			w2 = (w1[p] == j) ? w0[p] : NaN
 			WaveTransform zapnans w2
-			if(numpnts(w2)==0)
-				KillWaves/Z w2
+			if(numpnts(w2) == 0)
+				KillWaves/Z w2	// get rid of any tracks that didn't exist
 			else
 				w2[0] = 0	// first point in distance trace is -1 so correct this
 				Integrate/METH=0 w2	// make cumulative distance
@@ -406,8 +407,8 @@ Function MakeTracks(pref,tStep,pxSize)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// instantaneous velocity over time	
-	plotName=pref + "ivplot"
-	DoWindow/K $plotName	// set up plot
+	plotName = pref + "ivplot"
+	KillWindow/Z $plotName	// set up plot
 	Display/N=$plotName/HIDE=1
 
 	for(i = 0; i < nWaves; i += 1)
@@ -421,9 +422,9 @@ Function MakeTracks(pref,tStep,pxSize)
 			newName = "iv_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 $newName
 			WAVE w2=$newName
-			w2 = (w1 == j) ? w0 : NaN
+			w2 = (w1[p] == j) ? w0[p] : NaN
 			WaveTransform zapnans w2
-			if(numpnts(w2)==0)
+			if(numpnts(w2) == 0)
 				Killwaves w2
 			else
 			w2[0] = 0	// first point in distance trace is -1, so correct this
@@ -446,7 +447,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	plotName = pref + "ivHist"
-	DoWindow/K $plotName	//set up plot
+	KillWindow/Z $plotName	//set up plot
 	Display/N=$plotName/HIDE=1
 	
 	Concatenate/O/NP avList, tempwave
@@ -466,8 +467,8 @@ Function MakeTracks(pref,tStep,pxSize)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// plot out tracks
-	plotName=pref + "tkplot"
-	DoWindow/K $plotName	//set up plot
+	plotName = pref + "tkplot"
+	KillWindow/Z $plotName	//set up plot
 	Display/N=$plotName/HIDE=1
 	
 	Variable off
@@ -478,32 +479,32 @@ Function MakeTracks(pref,tStep,pxSize)
 		Duplicate/O/RMD=[][3,3] m0, w0	//x pos
 		Duplicate/O/RMD=[][4,4] m0, w1	//y pos
 		Duplicate/O/RMD=[][1,1] m0, w2	//track number
-		Redimension/N=-1 w0, w1,w2		
+		Redimension/N=-1 w0,w1,w2		
 		nTrack=WaveMax(w2)	//find maximum track no.
 		for(j = 1; j < (nTrack+1); j += 1)	//index is 1-based
 			newName = "tk_" + mName0 + "_" + num2str(j)
 			Duplicate/O w0 w3
-			w3 = (w2 == j) ? w3 : NaN
+			w3 = (w2[p] == j) ? w3[p] : NaN
 			WaveTransform zapnans w3
-			if(numpnts(w3)==0)
+			if(numpnts(w3) == 0)
 				Killwaves w3
 			else
-			off = w3[0]
-			w3 -= off	//set to origin
-			w3 *= pxSize
-			// do the y wave
-			Duplicate/O w1 w4
-			w4 = (w2==j) ? w4 : NaN
-			WaveTransform zapnans w4
-			off=w4[0]
-			w4 -=off
-			w4 *=pxSize
-			Concatenate/O/KILL {w3,w4}, $newName
-			WAVE w5 = $newName
-			AppendtoGraph/W=$plotName w5[][1] vs w5[][0]
+				off = w3[0]
+				w3 -= off	//set to origin
+				w3 *= pxSize
+				// do the y wave
+				Duplicate/O w1 w4
+				w4 = (w2[p] == j) ? w4[p] : NaN
+				WaveTransform zapnans w4
+				off = w4[0]
+				w4 -= off
+				w4 *= pxSize
+				Concatenate/O/KILL {w3,w4}, $newName
+				WAVE w5 = $newName
+				AppendtoGraph/W=$plotName w5[][1] vs w5[][0]
 			endif
 		endfor
-		Killwaves w0, w1, w2 //tidy up
+		Killwaves/Z w0, w1, w2 //tidy up
 	endfor
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
 	SetAxis/W=$plotName left -250,250;DelayUpdate
@@ -516,7 +517,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	
 	// calculate d/D directionality ratio
 	plotName = pref + "dDplot"
-	DoWindow/K $plotName	// setup plot
+	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
 	
 	String wName0, wName1
@@ -531,22 +532,22 @@ Function MakeTracks(pref,tStep,pxSize)
 		WAVE w1 = $wName1
 		newName = ReplaceString("tk",wName0,"dD")
 		Duplicate/O w1 $newName
-		WAVE w2=$newName
+		WAVE w2 = $newName
 		len = numpnts(w2)
 		w2[0] = NaN	// d/D at point 0 is not a number
 		for(j = 1; j < len; j += 1)
-			if(w1[j]==0)
-				w2[j]=1
+			if(w1[j] == 0)
+				w2[j] = 1
 			else
-				w2[j]= sqrt(w0[j][0]^2 + w0[j][1]^2) / w1[j]
+				w2[j] = sqrt(w0[j][0]^2 + w0[j][1]^2) / w1[j]
 			endif
 		endfor
 		AppendtoGraph/W=$plotName w2
 	Endfor
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
-	avList=Wavelist("dD*",";","WIN:"+ plotName)
-	avName="W_Ave_dD_" + ReplaceString("_",pref,"")
-	errName=ReplaceString("Ave", avName, "Err")
+	avList = Wavelist("dD*",";","WIN:"+ plotName)
+	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
+	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Directionality ratio (d/D)"
@@ -558,7 +559,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	
 	// calculate MSD (overlapping method)
 	plotName = pref + "MSDplot"
-	DoWindow/K $plotName	//setup plot
+	KillWindow/Z $plotName	//setup plot
 	Display/N=$plotName/HIDE=1
 	
 	wList0 = WaveList("tk_" + pref + "*", ";","")
@@ -566,7 +567,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	Variable k
 	
 	for(i = 0; i < nWaves; i += 1)
-		wName0=StringFromList(i,wList0)	// tk wave
+		wName0 = StringFromList(i,wList0)	// tk wave
 		WAVE w0 = $wName0
 		len = DimSize(w0,0)
 		mName0 = ReplaceString("tk",wName0,"MSDtemp")
@@ -583,7 +584,7 @@ Function MakeTracks(pref,tStep,pxSize)
 		Make/O/N=(len) $newName=NaN
 		WAVE w2 = $newName
 		// extract cell MSDs per time point
-		for(k = 0; k < len-1; k += 1)
+		for(k = 0; k < (len-1); k += 1)
 			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
 			Wavestats/Q w1			
 			w2[k+1] = v_avg
@@ -593,9 +594,9 @@ Function MakeTracks(pref,tStep,pxSize)
 		AppendtoGraph/W=$plotName w2
 	endfor
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
-	avList=Wavelist("MSD*",";","WIN:"+ plotName)
-	avName="W_Ave_MSD_" + ReplaceString("_",pref,"")
-	errName=ReplaceString("Ave", avName, "Err")
+	avList = Wavelist("MSD*",";","WIN:"+ plotName)
+	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
+	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
 	ModifyGraph/W=$plotName log=1
@@ -611,13 +612,13 @@ Function MakeTracks(pref,tStep,pxSize)
 	
 	// calculate direction autocorrelation
 	plotName = pref + "DAplot"
-	DoWindow/K $plotName	// setup plot
+	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
 	
 	for(i = 0; i < nWaves; i += 1)
 		wName0 = StringFromList(i,wList0)			// tk wave
 		WAVE w0 = $wName0
-		len=DimSize(w0,0)	// len is number of frames
+		len = DimSize(w0,0)	// len is number of frames
 		Make/O/N=(len-1,2) vwave	// make vector wave. nVectors is len-1
 		vwave = w0[p+1][q] - w0[p][q]
 		Make/O/D/N=(len-1) magwave	// make magnitude wave. nMagnitudes is len-1
@@ -647,11 +648,11 @@ Function MakeTracks(pref,tStep,pxSize)
 		SetScale/P x 0,tStep,"min", w2
 		AppendtoGraph/W=$plotName w2
 	endfor
-	Killwaves vwave,magwave
+	Killwaves/Z vwave,magwave
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
 	avList = Wavelist("DA*",";","WIN:"+ plotName)
-	avName="W_Ave_DA_" + ReplaceString("_",pref,"")
-	errName=ReplaceString("Ave", avName, "Err")
+	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
+	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
 	SetAxis/W=$plotName left -1,1
@@ -716,14 +717,14 @@ Function OrderGraphs()
 	
 	Variable i
 	
-	for(i=0; i<numWindows; i+=1)
+	for(i = 0; i < numWindows; i += 1)
 		String name = StringFromList(i, list)
 		DoWindow /F $name
 	endfor
 End
 
 // Function from aclight to retrieve #pragma version number
-//// @param procedureWinTitleStr	This is the procedure window "LoadMigration.ipf"
+/// @param procedureWinTitleStr	This is the procedure window "LoadMigration.ipf"
 Function GetProcedureVersion(procedureWinTitleStr)
 	String procedureWinTitleStr
  
