@@ -21,12 +21,10 @@
 
 // Menu item for easy execution
 Menu "Macros"
-	"Cell Migration...",  Migrate()
+	"Cell Migration...",  SetUpMigration()
 End
 
-// Loads the data and performs migration analysis
-Function Migrate()
-	
+Function SetUpMigration()
 	SetDataFolder root:
 	// kill all windows and waves before we start
 	CleanSlate()
@@ -39,6 +37,21 @@ Function Migrate()
 	Prompt tStep, "Time interval (min)"
 	Prompt  pxSize, "Pixel size (µm)"
 	DoPrompt "Specify", cond, tStep, pxSize
+	
+	Make/O/N=3 paramWave={cond,tStep,pxSize}
+	myIO_Panel(cond)
+End
+
+// Loads the data and performs migration analysis
+Function Migrate()
+	WAVE/Z paramWave
+	if(!WaveExists(paramWave))
+		Abort "Setup has failed. Missing paramWave."
+	endif
+	
+	Variable cond = paramWave[0]
+	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
 	
 	// Pick colours from SRON palettes
 	String pal
@@ -77,7 +90,9 @@ Function Migrate()
 	Variable color
 	Variable/G gR, gG, gB
 	
-	fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
+	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
+	String name
+	Variable i
 	
 	for(i = 0; i < 6; i += 1)
 		name = StringFromList(i, fullList)
@@ -88,9 +103,10 @@ Function Migrate()
 	String dataFolderName = "root:data"
 	NewDataFolder/O $dataFolderName // make root:data: but don't put anything in it yet
 	
+	WAVE/T condWave = root:condWave
+	
 	for(i = 0; i < cond; i += 1)
-		Prompt pref, "Experimental condition e.g. \"Ctrl\", \"OE24hGFP\"."
-		DoPrompt "Describe conditions", pref
+		pref = condWave[i]
 		
 		// add underscore if user forgets
 		if(StringMatch(pref,"*_") == 0)
@@ -119,7 +135,7 @@ Function Migrate()
 		dataFolderName = "root:data:" + RemoveEnding(pref)
 		NewDataFolder/O/S $dataFolderName
 		// run other procedures
-		LoadMigration(pref)
+		LoadMigration(pref,i)
 		MakeTracks(pref,tStep,pxSize)
 		SetDataFolder root:
 	endfor
@@ -242,12 +258,10 @@ Function Migrate()
 	ModifyLayout units=0
 	ModifyLayout frame=0,trans=1
 	Execute /Q "Tile"
-	
-//	OrderGraphs()
-// Execute "TileWindows/O=1/C"
 
 	// when we get to the end, print (pragma) version number
 	Print "*** Executed Migrate v", GetProcedureVersion("CellMigration.ipf")
+	KillWindow/Z FilePicker
 End
 
 // This function will load the tracking data from an Excel Workbook
@@ -256,19 +270,19 @@ Function LoadMigration(pref,ii)
 	String pref
 	Variable ii
 	
-	WAVE/T PathWave1
+	WAVE/T PathWave1 = root:PathWave1
 	String sheet, prefix, wList
 	Variable i
 	
 	// opens a dialog to specify xls file. Reads sheets and then loads each.
 	XLLoadWave/J=1 PathWave1[ii]
 	Variable moviemax = ItemsInList(S_value)
-	NewPath/O/Q path1, S_path
+//	NewPath/O/Q path1, S_path
 	
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i,S_Value)
 		prefix = pref + num2str(i)
-		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/P=path1 S_fileName
+		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix PathWave1[ii]
 		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
 		Concatenate/O/KILL wList, $prefix
 	endfor
@@ -729,7 +743,7 @@ Function DoItButtonProc(ctrlName) : ButtonControl
 				Print "Error: Not all conditions have a file to load."
 				break
 			else
-				// load
+				Migrate()
 			endif
 	endswitch	
 End
@@ -796,7 +810,7 @@ Static Function byte_value(data, byte)
 End
 
 STATIC Function CleanSlate()
-	String fullList = WinList("*", ";","WIN:3")
+	String fullList = WinList("*", ";","WIN:7")
 	Variable allItems = ItemsInList(fullList)
 	String name
 	Variable i
@@ -808,7 +822,7 @@ STATIC Function CleanSlate()
 	
 	// Kill waves in root
 	KillWaves/A/Z
-	// Look for data folders
+	// Look for data folders and kill them
 	DFREF dfr = GetDataFolderDFR()
 	allItems = CountObjectsDFR(dfr, 4)
 	for(i = 0; i < allItems; i += 1)
