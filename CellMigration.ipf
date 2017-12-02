@@ -21,24 +21,37 @@
 
 // Menu item for easy execution
 Menu "Macros"
-	"Cell Migration...",  Migrate()
+	"Cell Migration...",  SetUpMigration()
 End
 
-// Loads the data and performs migration analysis
-Function Migrate()
-	
+Function SetUpMigration()
 	SetDataFolder root:
 	// kill all windows and waves before we start
 	CleanSlate()
 	
 	Variable cond = 2
 	Variable tStep = 20
-	Variable pxSize = 0.32
+	Variable pxSize = 0.22698
 	
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
 	Prompt  pxSize, "Pixel size (µm)"
 	DoPrompt "Specify", cond, tStep, pxSize
+	
+	Make/O/N=3 paramWave={cond,tStep,pxSize}
+	myIO_Panel(cond)
+End
+
+// Loads the data and performs migration analysis
+Function Migrate()
+	WAVE/Z paramWave = root:paramWave
+	if(!WaveExists(paramWave))
+		Abort "Setup has failed. Missing paramWave."
+	endif
+	
+	Variable cond = paramWave[0]
+	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
 	
 	// Pick colours from SRON palettes
 	String pal
@@ -77,7 +90,9 @@ Function Migrate()
 	Variable color
 	Variable/G gR, gG, gB
 	
-	fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
+	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
+	String name
+	Variable i
 	
 	for(i = 0; i < 6; i += 1)
 		name = StringFromList(i, fullList)
@@ -88,9 +103,11 @@ Function Migrate()
 	String dataFolderName = "root:data"
 	NewDataFolder/O $dataFolderName // make root:data: but don't put anything in it yet
 	
+	WAVE/T condWave = root:condWave
+	Variable moviemax1, moviemax2
+	
 	for(i = 0; i < cond; i += 1)
-		Prompt pref, "Experimental condition e.g. \"Ctrl\", \"OE24hGFP\"."
-		DoPrompt "Describe conditions", pref
+		pref = condWave[i]
 		
 		// add underscore if user forgets
 		if(StringMatch(pref,"*_") == 0)
@@ -119,7 +136,15 @@ Function Migrate()
 		dataFolderName = "root:data:" + RemoveEnding(pref)
 		NewDataFolder/O/S $dataFolderName
 		// run other procedures
-		LoadMigration(pref)
+		moviemax1 = LoadMigration(pref,i)
+		moviemax2 = CorrectMigration(pref,i)
+		if(moviemax1 != moviemax2)
+			if(moviemax2 == -1)
+				print "No correction applied to", RemoveEnding(pref)
+			else
+				print "Caution: different number of stationary tracks compared with real tracks."
+			endif
+		endif
 		MakeTracks(pref,tStep,pxSize)
 		SetDataFolder root:
 	endfor
@@ -242,39 +267,120 @@ Function Migrate()
 	ModifyLayout units=0
 	ModifyLayout frame=0,trans=1
 	Execute /Q "Tile"
-	
-//	OrderGraphs()
-// Execute "TileWindows/O=1/C"
 
 	// when we get to the end, print (pragma) version number
 	Print "*** Executed Migrate v", GetProcedureVersion("CellMigration.ipf")
+	KillWindow/Z FilePicker
 End
 
 // This function will load the tracking data from an Excel Workbook
 /// @param pref	prefix for excel workbook e.g. "ctrl_"
+/// @param	ii	variable containing row number from condWave
 Function LoadMigration(pref,ii)
 	String pref
 	Variable ii
 	
-	WAVE/T PathWave1
-	String sheet, prefix, wList
+	WAVE/T PathWave1 = root:PathWave1
+	String sheet, prefix, matName, wList
 	Variable i
 	
 	// opens a dialog to specify xls file. Reads sheets and then loads each.
 	XLLoadWave/J=1 PathWave1[ii]
 	Variable moviemax = ItemsInList(S_value)
-	NewPath/O/Q path1, S_path
 	
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i,S_Value)
-		prefix = pref + num2str(i)
-		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/P=path1 S_fileName
+		prefix = pref + "c_" + num2str(i)
+		matName = pref + num2str(i)
+		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave1[ii]
 		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
-		Concatenate/O/KILL wList, $prefix
+		Concatenate/O/KILL wList, $matName
+	endfor
+	
+	Print "*** Offset data for condition", RemoveEnding(pref), "was loaded from", S_path
+	
+	return moviemax
+End
+
+// This function will load the tracking data from an Excel Workbook
+///	@param	pref	prefix for excel workbook e.g. "ctrl_"
+///	@param	ii	variable containing row number from condWave
+Function CorrectMigration(pref,ii)
+	String pref
+	Variable ii
+	
+	WAVE/T PathWave2 = root:PathWave2
+	Variable len = strlen(PathWave2[ii])
+	if(len == 0)
+		return -1
+	elseif(numtype(len) == 2)
+		return -1
+	endif
+	
+	String sheet, prefix, matName, wList, mName
+	Variable i
+	
+	// opens a dialog to specify xls file. Reads sheets and then loads each.
+	XLLoadWave/J=1 PathWave2[ii]
+	Variable moviemax = ItemsInList(S_value)
+	
+	for(i = 0; i < moviemax; i += 1)
+		sheet = StringFromList(i,S_Value)
+		prefix = "stat_" + "c_" + num2str(i)	// use stat prefix
+		matName = "stat_" + num2str(i)
+		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave2[ii]
+		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
+		Concatenate/O/KILL wList, $matName
+		Wave matStat = $matName
+		// Find corresponding movie matrix
+		mName = ReplaceString("stat_",matname,pref)
+		Wave matTrax = $mName
+		OffsetAndRecalc(matStat,matTrax)
 	endfor
 	
 	Print "*** Condition", RemoveEnding(pref), "was loaded from", S_path
+
+	return moviemax
+End
+
+Function OffsetAndRecalc(matStat,matTrax)
+	Wave matStat,matTrax
+	// Work out offset for the stat_* waves
+	Variable x0 = matStat[0][3]
+	Variable y0 = matStat[0][4]
+	matStat[][3] -= x0
+	matStat[][4] -= y0
+	MatrixOp/O/FREE mStat2 = col(matStat,2)
+	Variable maxFrame = WaveMax(mStat2)
+	Variable j // because i refers to rows
 	
+	// offsetting loop
+	for(j = 1; j < maxFrame + 1; j += 1)
+		FindValue/V=(j) mStat2
+		if(V_Value == -1)
+			x0 = 0
+			y0 = 0
+		else
+			x0 = matStat[V_Value][3]
+			y0 = matStat[V_Value][4]
+		endif
+		matTrax[][3] = (matTrax[p][2] == j) ? matTrax[p][3] - x0 : matTrax[p][3]
+		matTrax[][4] = (matTrax[p][2] == j) ? matTrax[p][4] - y0 : matTrax[p][4]
+	endfor
+	WAVE/Z paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
+	// make new distance column
+	Duplicate/O/RMD=[][3,4]/FREE matTrax,tempDist // take offset coords
+	Differentiate/METH=2 tempDist
+	tempDist[][] = (matTrax[p][5] == -1) ? 0 : tempDist[p][q]
+	MatrixOp/O/FREE tempNorm = sqrt(sumRows(tempDist * tempDist))
+	tempNorm[] *= pxSize // convert to real distance
+	matTrax[][5] = (matTrax[p][5] == -1) ? -1 : tempNorm[p] // going to leave first point as -1
+	// correct speed column
+	matTrax[][6] = (matTrax[p][6] == -1) ? -1 : tempNorm[p] / tStep
+	// put 1st point as -1
+	matTrax[0][5,6] = -1
 End
 
 // This function will make cumulative distance waves for each cell. They are called cd_*
@@ -729,7 +835,7 @@ Function DoItButtonProc(ctrlName) : ButtonControl
 				Print "Error: Not all conditions have a file to load."
 				break
 			else
-				// load
+				Migrate()
 			endif
 	endswitch	
 End
@@ -796,7 +902,7 @@ Static Function byte_value(data, byte)
 End
 
 STATIC Function CleanSlate()
-	String fullList = WinList("*", ";","WIN:3")
+	String fullList = WinList("*", ";","WIN:7")
 	Variable allItems = ItemsInList(fullList)
 	String name
 	Variable i
@@ -808,7 +914,7 @@ STATIC Function CleanSlate()
 	
 	// Kill waves in root
 	KillWaves/A/Z
-	// Look for data folders
+	// Look for data folders and kill them
 	DFREF dfr = GetDataFolderDFR()
 	allItems = CountObjectsDFR(dfr, 4)
 	for(i = 0; i < allItems; i += 1)
