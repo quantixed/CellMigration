@@ -405,7 +405,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	
 	String layoutName = pref + "layout"
 	KillWindow/Z $layoutName		// Kill the layout if it exists
-	NewLayout/N=$layoutName		// Igor 7 has multipage layouts, using separate layouts for now.
+	NewLayout/HIDE=1/N=$layoutName		// Igor 7 has multipage layouts, using separate layouts for now.
 
 	// cumulative distance and plot over time	
 	plotName = pref + "cdplot"
@@ -577,13 +577,6 @@ Function MakeTracks(pref,tStep,pxSize)
 		len = numpnts(w2)
 		w2[] = (w1[p] == 0) ? 1 : sqrt(w0[p][0]^2 + w0[p][1]^2) / w1[p]
 		w2[0] = NaN	// d/D at point 0 is not a number
-//		for(j = 1; j < len; j += 1)
-//			if(w1[j] == 0)
-//				w2[j] = 1
-//			else
-//				w2[j] = sqrt(w0[j][0]^2 + w0[j][1]^2) / w1[j]
-//			endif
-//		endfor
 		AppendtoGraph/W=$plotName w2
 	Endfor
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
@@ -612,28 +605,15 @@ Function MakeTracks(pref,tStep,pxSize)
 		wName0 = StringFromList(i,wList0)	// tk wave
 		WAVE w0 = $wName0
 		len = DimSize(w0,0)
-		mName0 = ReplaceString("tk",wName0,"MSDtemp")
 		newName = ReplaceString("tk",wName0,"MSD")	// for results of MSD per cell
-		Make/O/N=(len,len-1) $mName0=NaN // this calculates all, probably only need first half
-		WAVE m0 = $mName0
-		for(k = 0; k < len-1; k += 1)	// by col, this is delta T
-			for(j = 1; j < len; j += 1)	// by row, this is the starting frame
-				if(j > k)
-					m0[j][k]= ((w0[j][0] - w0[j-(k+1)][0])^2)+((w0[j][1] - w0[j-(k+1)][1])^2)
-				endif
-			endfor
-		endfor
-		Make/O/N=(len) $newName=NaN
-		WAVE w2 = $newName
-		// extract cell MSDs per time point
-		for(k = 0; k < (len-1); k += 1)
-			Duplicate/FREE/O/R=[][k] m0, w1 //no need to redimension or zapnans
-			Wavestats/Q w1			
-			w2[k+1] = v_avg
-		endfor
-		KillWaves m0
-		SetScale/P x 0,tStep,"min", w2
-		AppendtoGraph/W=$plotName w2
+		Make/O/N=(len-1,len-1,2)/FREE tempMat0,tempMat1
+		tempMat0[][][] = (p >= q) ? w0[p+1][r] : 0
+		tempMat1[][][] = (p >= q) ? w0[p-q][r] : 0
+		MatrixOp/O tempMat2 = (tempMat0 - tempMat1) * (tempMat0 - tempMat1))
+		Make/O/N=(len-1)/FREE countOfMSDPnts = (len-1)-p
+		MatrixOp/O $newName = sumcols(sumbeams(tempMat2))^t / countOfMSDPnts
+		SetScale/P x 0,tStep,"min", $newName
+		AppendtoGraph/W=$plotName $newName
 	endfor
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
 	avList = Wavelist("MSD*",";","WIN:"+ plotName)
@@ -709,13 +689,13 @@ Function MakeTracks(pref,tStep,pxSize)
 	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=cdPlot $avName
-	ErrorBars/W=cdPlot $avName Y,wave=($errName,$errName)
+	ErrorBars/W=cdPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=cdPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 	
 	avName = "W_Ave_iv_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=ivPlot $avName
-	ErrorBars/W=ivPlot $avName Y,wave=($errName,$errName)
+	ErrorBars/W=ivPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 	
 	newName = pref + "ivHist"
@@ -725,19 +705,19 @@ Function MakeTracks(pref,tStep,pxSize)
 	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=dDPlot $avName
-	ErrorBars/W=dDPlot $avName Y,wave=($errName,$errName)
+	ErrorBars/W=dDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=dDPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 			
 	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=MSDPlot $avName
-	ErrorBars/W=MSDPlot $avName Y,wave=($errName,$errName)
+	ErrorBars/W=MSDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=MSDPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 	
 	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=DAPlot $avName
-	ErrorBars/W=DAPlot $avName Y,wave=($errName,$errName)
+	ErrorBars/W=DAPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
 	
 	// Tidy report
