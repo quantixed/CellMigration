@@ -607,6 +607,8 @@ Function MakeTracks(pref,tStep,pxSize)
 		len = DimSize(w0,0)
 		newName = ReplaceString("tk",wName0,"MSD")	// for results of MSD per cell
 		Make/O/N=(len-1,len-1,2)/FREE tempMat0,tempMat1
+		// make 2 3D waves. 0 is end point to measure MSD, 1 is start point
+		// layers are x and y
 		tempMat0[][][] = (p >= q) ? w0[p+1][r] : 0
 		tempMat1[][][] = (p >= q) ? w0[p-q][r] : 0
 		MatrixOp/O tempMat2 = (tempMat0 - tempMat1) * (tempMat0 - tempMat1))
@@ -641,36 +643,22 @@ Function MakeTracks(pref,tStep,pxSize)
 		wName0 = StringFromList(i,wList0)			// tk wave
 		WAVE w0 = $wName0
 		len = DimSize(w0,0)	// len is number of frames
-		Make/O/N=(len-1,2) vwave	// make vector wave. nVectors is len-1
-		vwave = w0[p+1][q] - w0[p][q]
-		Make/O/D/N=(len-1) magwave	// make magnitude wave. nMagnitudes is len-1
-		magwave = sqrt((vwave[p][0]^2) + (vwave[p][1]^2))
-		vwave /= magwave[p]	// normalise the vectors
-		mName0 = ReplaceString("tk",wName0,"DAtemp")
+		Differentiate/METH=2/DIM=0/EP=1 w0 /D=vWave // make vector wave. nVectors is len-1
+		MatrixOp/O/FREE magWave = sqrt(sumrows(vWave * vWave))
+		vWave[][] /= magWave[p]	// normalise vectors
 		newName = ReplaceString("tk",wName0,"DA")	// for results of DA per cell
-		Make/O/N=(len-1,len-2) $mName0 = NaN	// matrix for results (nVectors,n∆t)
-		WAVE m0 = $mName0
-		for(k = 0; k < len-1; k += 1)	// by col, this is ∆t 0-based
-			for(j = 0; j < len; j += 1)	// by row, this is the starting vector 0-based
-				if((j+(k+1)) < len-1)
-					m0[j][k]= (vwave[j][0] * vwave[j+(k+1)][0]) + (vwave[j][1] * vwave[j+(k+1)][1])
-				endif
-			endfor
-		endfor
-		Make/O/N=(len-1) $newName = NaN // npnts is len-1 not len-2 because of 1st point = 1
-		Wave w2 = $newName
-		w2[0] = 1
-		// extract cell average cos(theta) per time interval
-		for(k = 0; k < len-2; k += 1)
-			Duplicate/FREE/O/RMD=[][k,k] m0, w1 //no need to redimension or zapnans
-			Wavestats/Q w1	//mean function requires zapnans	
-			w2[k+1] = v_avg
-		endfor
-		KillWaves m0
-		SetScale/P x 0,tStep,"min", w2
-		AppendtoGraph/W=$plotName w2
+		Make/O/N=(len-1,len-1,2)/FREE tempDAMat0,tempDAMat1
+		tempDAMat0[][][] = (p >= q) ? vWave[p-q][r] : 0
+		tempDAMat1[][][] = (p >= q) ? vWave[p+1][r] : 0
+		MatrixOp/O/FREE dotWave = (tempDAMat0 * tempDAMat1)
+		MatrixOp/O/FREE alphaWave = sumBeams(dotWave)
+		// Make average
+		Make/O/N=(len-2)/FREE countOfDAPnts = (len-2)-p
+		MatrixOp/O $newName = sumcols(alphaWave)^t / countOfDAPnts
+		SetScale/P x 0,tStep,"min", $newName
+		AppendtoGraph/W=$plotName $newName
 	endfor
-	Killwaves/Z vwave,magwave
+	Killwaves/Z vWave
 	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
 	avList = Wavelist("DA*",";","WIN:"+ plotName)
 	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
