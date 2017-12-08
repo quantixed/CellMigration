@@ -295,11 +295,44 @@ Function LoadMigration(pref,ii)
 		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave1[ii]
 		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
 		Concatenate/O/KILL wList, $matName
+		// check that distances and speeds are correct
+		Wave matTrax = $matName
+		// make sure 1st point is -1
+		matTrax[0][5,6] = -1
+		CheckDistancesAndSpeeds(matTrax)
 	endfor
 	
-	Print "*** Offset data for condition", RemoveEnding(pref), "was loaded from", S_path
+	Print "*** Offset data for condition", RemoveEnding(pref), "was loaded from", S_path	
 	
+	// return moviemax back to calling function for checking
 	return moviemax
+End
+
+// The purpose of this function is to work out whether the distances (and speeds) in the
+// original data are correct. Currently it just corrects them rather than testing and correcting if needed.
+Function CheckDistancesAndSpeeds(matTrax)
+	WAVE matTrax
+	
+	WAVE/Z paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
+	
+	// make new distance column
+	Duplicate/O/RMD=[][3,4]/FREE matTrax,tempDist // take offset coords
+	Differentiate/METH=2 tempDist
+	tempDist[][] = (matTrax[p][5] == -1) ? 0 : tempDist[p][q]
+	MatrixOp/O/FREE tempNorm = sqrt(sumRows(tempDist * tempDist))
+	tempNorm[] *= pxSize // convert to real distance
+	MatrixOp/O/FREE tempReal = sumcols(tempNorm - col(matTrax,5))
+//	print "recalc dist", sum(tempreal), "um", numpnts(tempNorm)
+//	Variable errVar = sum(tempReal)
+//	if (abs(errVar) > ((pxSize / 4) * numpnts(tempNorm))) // 25% error per time point
+	matTrax[][5] = (matTrax[p][5] == -1) ? -1 : tempNorm[p] // going to leave first point as -1
+	// correct speed column
+	matTrax[][6] = (matTrax[p][6] == -1) ? -1 : tempNorm[p] / tStep
+	// make sure 1st point is -1
+	matTrax[0][5,6] = -1
+//	endif
 End
 
 // This function will load the tracking data from an Excel Workbook
@@ -343,6 +376,7 @@ Function CorrectMigration(pref,ii)
 	return moviemax
 End
 
+// This function uses matStat to offset matTrax
 Function OffsetAndRecalc(matStat,matTrax)
 	Wave matStat,matTrax
 	// Work out offset for the stat_* waves
@@ -425,8 +459,8 @@ Function MakeTracks(pref,tStep,pxSize)
 			WAVE w2 = $newName
 			w2 = (tCellW[p] == j) ? tDistW[p] : NaN
 			WaveTransform zapnans w2
-			if(numpnts(w2) == 0)
-				KillWaves/Z w2	// get rid of any tracks that didn't exist
+			if(numpnts(w2) <= (ceil(60/tstep)))
+				KillWaves/Z w2	// get short tracks and any tracks that didn't exist
 			else
 				w2[0] = 0	// first point in distance trace is -1 so correct this
 				Integrate/METH=0 w2	// make cumulative distance
@@ -465,7 +499,7 @@ Function MakeTracks(pref,tStep,pxSize)
 			WAVE w2 = $newName
 			w2 = (tCellW[p] == j) ? tDistW[p] : NaN
 			WaveTransform zapnans w2
-			if(numpnts(w2) == 0)
+			if(numpnts(w2) <= (ceil(60/tstep)))
 				KillWaves w2
 			else
 				w2[0] = 0	// first point in distance trace is -1, so correct this
@@ -521,20 +555,20 @@ Function MakeTracks(pref,tStep,pxSize)
 		Duplicate/O/RMD=[][4,4] m0, tYW	//y pos
 		Duplicate/O/RMD=[][1,1] m0, tCellW	//track number
 		Redimension/N=-1 tXW,tYW,tCellW		
-		nTrack=WaveMax(tCellW)	//find maximum track no.
+		nTrack = WaveMax(tCellW)	//find maximum track number
 		for(j = 1; j < (nTrack+1); j += 1)	//index is 1-based
 			newName = "tk_" + mName0 + "_" + num2str(j)
-			Duplicate/O tXW w3	// tried to keep wn as references, but these are very local
+			Duplicate/O tXW, w3	// tried to keep wn as references, but these are very local
 			w3 = (tCellW[p] == j) ? w3[p] : NaN
 			WaveTransform zapnans w3
-			if(numpnts(w3) == 0)
-				Killwaves w3
+			if(numpnts(w3) <= (ceil(60/tstep)))
+				KillWaves w3
 			else
 				off = w3[0]
 				w3 -= off	//set to origin
 				w3 *= pxSize
 				// do the y wave
-				Duplicate/O tYW w4
+				Duplicate/O tYW, w4
 				w4 = (tCellW[p] == j) ? w4[p] : NaN
 				WaveTransform zapnans w4
 				off = w4[0]
@@ -798,6 +832,11 @@ Function DoItButtonProc(ctrlName) : ButtonControl
 				Print "Error: Not all conditions have a name."
 				break
 			endif
+			okvar = NameChecker(CondWave)
+			if (okvar == -1)
+				Print "Error: Two conditions have the same name."
+				break
+			endif
 			okvar = WaveChecker(PathWave1)
 			if (okvar == -1)
 				Print "Error: Not all conditions have a file to load."
@@ -822,6 +861,25 @@ STATIC function WaveChecker(TextWaveToCheck)
 		elseif(numtype(len) == 2)
 			return -1
 		endif
+	endfor
+	return 1
+End
+
+STATIC function NameChecker(TextWaveToCheck)
+	Wave/T TextWaveToCheck
+	Variable nRows = numpnts(TextWaveToCheck)
+	Variable len
+	
+	Variable i,j
+	
+	for(i = 0; i < nRows; i += 1)
+		for(j = 0; j < nRows; j += 1)
+			if(j > i)
+				if(cmpstr(TextWaveToCheck[i], TextWaveToCheck[j], 0) == 0)
+					return -1
+				endif
+			endif
+		endfor
 	endfor
 	return 1
 End
