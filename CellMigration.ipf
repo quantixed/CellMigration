@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.04		// version number of Migrate()
+#pragma version=1.05		// version number of Migrate()
 #include <Waves Average>
 
 // LoadMigration contains 3 procedures to analyse cell migration in IgorPro
@@ -52,43 +52,13 @@ Function Migrate()
 	Variable cond = paramWave[0]
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
-	
-	// Pick colours from SRON palettes
-	String pal
-	if(cond == 1)
-		pal = SRON_1
-	elseif(cond == 2)
-		pal = SRON_2
-	elseif(cond == 3)
-		pal = SRON_3
-	elseif(cond == 4)
-		pal = SRON_4
-	elseif(cond == 5)
-		pal = SRON_5
-	elseif(cond == 6)
-		pal = SRON_6
-	elseif(cond == 7)
-		pal = SRON_7
-	elseif(cond == 8)
-		pal = SRON_8
-	elseif(cond == 9)
-		pal = SRON_9
-	elseif(cond == 10)
-		pal = SRON_10
-	elseif(cond == 11)
-		pal = SRON_11
-	else
-		pal = SRON_12
-	endif
-
-	Make/O/N=(cond,3) colorwave
+	MakeColorWave(cond)
+	WAVE/Z colorWave = root:colorWave
 	Make/O/T/N=(cond) sum_Label
 	Make/O/N=(cond) sum_MeanSpeed, sum_SemSpeed, sum_NSpeed
 	Make/O/N=(cond) sum_MeanIV, sum_SemIV
 	
 	String pref, lab
-	Variable color
-	Variable/G gR, gG, gB
 	
 	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
 	String name
@@ -113,25 +83,10 @@ Function Migrate()
 		if(StringMatch(pref,"*_") == 0)
 			pref = pref + "_"
 		endif
-		
+		// make label wave from graphs (underscore-less)
 		lab = ReplaceString("_",pref,"")
 		sum_Label[i] = lab
 		
-		// specify colours
-		if(cond < 12)
-			color = str2num(StringFromList(i,pal))
-			gR = hexcolor_red(color)
-			gG = hexcolor_green(color)
-			gB = hexcolor_blue(color)
-		else
-			color = str2num(StringFromList(round((i)/12),pal))
-			gR = hexcolor_red(color)
-			gG = hexcolor_green(color)
-			gB = hexcolor_blue(color)
-		endif
-		colorwave[i][0] = gR
-		colorwave[i][1] = gG
-		colorwave[i][2] = gB
 		// make data folder
 		dataFolderName = "root:data:" + RemoveEnding(pref)
 		NewDataFolder/O/S $dataFolderName
@@ -145,7 +100,7 @@ Function Migrate()
 				print "Caution: different number of stationary tracks compared with real tracks."
 			endif
 		endif
-		MakeTracks(pref,tStep,pxSize)
+		MakeTracks(pref,i)
 		SetDataFolder root:
 	endfor
 	
@@ -302,7 +257,7 @@ Function LoadMigration(pref,ii)
 		CheckDistancesAndSpeeds(matTrax)
 	endfor
 	
-	Print "*** Offset data for condition", RemoveEnding(pref), "was loaded from", S_path	
+	Print "*** Condition", RemoveEnding(pref), "was loaded from", S_path	
 	
 	// return moviemax back to calling function for checking
 	return moviemax
@@ -324,15 +279,11 @@ Function CheckDistancesAndSpeeds(matTrax)
 	MatrixOp/O/FREE tempNorm = sqrt(sumRows(tempDist * tempDist))
 	tempNorm[] *= pxSize // convert to real distance
 	MatrixOp/O/FREE tempReal = sumcols(tempNorm - col(matTrax,5))
-//	print "recalc dist", sum(tempreal), "um", numpnts(tempNorm)
-//	Variable errVar = sum(tempReal)
-//	if (abs(errVar) > ((pxSize / 4) * numpnts(tempNorm))) // 25% error per time point
 	matTrax[][5] = (matTrax[p][5] == -1) ? -1 : tempNorm[p] // going to leave first point as -1
 	// correct speed column
 	matTrax[][6] = (matTrax[p][6] == -1) ? -1 : tempNorm[p] / tStep
 	// make sure 1st point is -1
 	matTrax[0][5,6] = -1
-//	endif
 End
 
 // This function will load the tracking data from an Excel Workbook
@@ -371,7 +322,7 @@ Function CorrectMigration(pref,ii)
 		OffsetAndRecalc(matStat,matTrax)
 	endfor
 	
-	Print "*** Condition", RemoveEnding(pref), "was loaded from", S_path
+	Print "*** Offset data for ondition", RemoveEnding(pref), "was loaded from", S_path
 
 	return moviemax
 End
@@ -421,16 +372,16 @@ End
 /// @param pref	prefix for excel workbook e.g. "ctrl_"
 /// @param tStep	timestep. Interval/frame rate of movie.
 /// @param pxSize	pixel size. xy scaling.
-Function MakeTracks(pref,tStep,pxSize)
+Function MakeTracks(pref,ii)
 	String pref
-	Variable tStep, pxSize
+	Variable ii
 	
-	NVAR cR = root:gR
-	NVAR cG = root:gG
-	NVAR cB = root:gB
+	WAVE/Z paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
+	WAVE/Z colorWave = root:colorWave
 	
 	String wList0 = WaveList(pref + "*",";","") // find all matrices
-
 	Variable nWaves = ItemsInList(wList0)
 	
 	Variable nTrack
@@ -469,7 +420,7 @@ Function MakeTracks(pref,tStep,pxSize)
 			endif
 		endfor
 	endfor
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	avList = Wavelist("cd*",";","WIN:"+ plotName)
 	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -509,7 +460,7 @@ Function MakeTracks(pref,tStep,pxSize)
 			endif
 		endfor
 	endfor
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	avList = Wavelist("iv*",";","WIN:"+ plotName)
 	avName = "W_Ave_iv_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -531,7 +482,7 @@ Function MakeTracks(pref,tStep,pxSize)
 	Make/O/N=(bval) $newName
 	Histogram/P/B={0,(sqrt((3*pxsize)^2)/tStep),bVal} tempwave,$newName
 	AppendToGraph/W=$plotName $newName
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	ModifyGraph/W=$plotName mode=5,hbFill=4
 	SetAxis/W=$plotName/A/N=1/E=1 left
 	SetAxis/W=$plotName bottom 0,2
@@ -581,7 +532,7 @@ Function MakeTracks(pref,tStep,pxSize)
 		endfor
 		Killwaves/Z tXW,tYW,tCellW //tidy up
 	endfor
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	SetAxis/W=$plotName left -250,250;DelayUpdate
 	SetAxis/W=$plotName bottom -250,250;DelayUpdate
 	ModifyGraph/W=$plotName width={Plan,1,bottom,left};DelayUpdate
@@ -613,7 +564,7 @@ Function MakeTracks(pref,tStep,pxSize)
 		w2[0] = NaN	// d/D at point 0 is not a number
 		AppendtoGraph/W=$plotName w2
 	Endfor
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	avList = Wavelist("dD*",";","WIN:"+ plotName)
 	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -651,7 +602,7 @@ Function MakeTracks(pref,tStep,pxSize)
 		SetScale/P x 0,tStep,"min", $newName
 		AppendtoGraph/W=$plotName $newName
 	endfor
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	avList = Wavelist("MSD*",";","WIN:"+ plotName)
 	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -693,7 +644,7 @@ Function MakeTracks(pref,tStep,pxSize)
 		AppendtoGraph/W=$plotName $newName
 	endfor
 	Killwaves/Z vWave
-	ModifyGraph/W=$plotName rgb=(cR,cG,cB)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	avList = Wavelist("DA*",";","WIN:"+ plotName)
 	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -712,35 +663,35 @@ Function MakeTracks(pref,tStep,pxSize)
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=cdPlot $avName
 	ErrorBars/W=cdPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
-	ModifyGraph/W=cdPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	ModifyGraph/W=cdPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	avName = "W_Ave_iv_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=ivPlot $avName
 	ErrorBars/W=ivPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
-	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	newName = pref + "ivHist"
 	AppendToGraph/W=ivHPlot $newName
-	ModifyGraph/W=ivHPlot rgb($newName)=(cR,cG,cB)
+	ModifyGraph/W=ivHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=dDPlot $avName
 	ErrorBars/W=dDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
-	ModifyGraph/W=dDPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	ModifyGraph/W=dDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 			
 	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=MSDPlot $avName
 	ErrorBars/W=MSDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
-	ModifyGraph/W=MSDPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	ModifyGraph/W=MSDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=DAPlot $avName
 	ErrorBars/W=DAPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
-	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(cR,cG,cB)
+	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	// Tidy report
 	DoWindow/F $layoutName
@@ -921,10 +872,66 @@ End
 
 /// @param data	variable in hexadecimal
 /// @param byte	variable to determine R, G or B value
-Static Function byte_value(data, byte)
+STATIC Function byte_value(data, byte)
 	Variable data
 	Variable byte
 	return (data & (0xFF * (2^(8*byte)))) / (2^(8*byte))
+End
+
+/// @param	cond	variable for number of conditions
+Function MakeColorWave(cond)
+	Variable cond
+	
+	// Pick colours from SRON palettes
+	String pal
+	if(cond == 1)
+		pal = SRON_1
+	elseif(cond == 2)
+		pal = SRON_2
+	elseif(cond == 3)
+		pal = SRON_3
+	elseif(cond == 4)
+		pal = SRON_4
+	elseif(cond == 5)
+		pal = SRON_5
+	elseif(cond == 6)
+		pal = SRON_6
+	elseif(cond == 7)
+		pal = SRON_7
+	elseif(cond == 8)
+		pal = SRON_8
+	elseif(cond == 9)
+		pal = SRON_9
+	elseif(cond == 10)
+		pal = SRON_10
+	elseif(cond == 11)
+		pal = SRON_11
+	else
+		pal = SRON_12
+	endif
+	
+	Variable color,vR,vG,vB
+	Make/O/N=(cond,3) root:colorwave
+	WAVE colorWave = root:colorWave
+	Variable i
+	
+	for(i = 0; i < cond; i += 1)
+		// specify colours
+		if(cond < 12)
+			color = str2num(StringFromList(i,pal))
+			vR = hexcolor_red(color)
+			vG = hexcolor_green(color)
+			vB = hexcolor_blue(color)
+		else
+			color = str2num(StringFromList(round((i)/12),pal))
+			vR = hexcolor_red(color)
+			vG = hexcolor_green(color)
+			vB = hexcolor_blue(color)
+		endif
+		colorwave[i][0] = vR
+		colorwave[i][1] = vG
+		colorwave[i][2] = vB
+	endfor
 End
 
 STATIC Function CleanSlate()
