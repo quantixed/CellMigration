@@ -647,7 +647,7 @@ Function MakeTracks(pref,tStep,pxSize)
 		MatrixOp/O/FREE magWave = sqrt(sumrows(vWave * vWave))
 		vWave[][] /= magWave[p]	// normalise vectors
 		newName = ReplaceString("tk",wName0,"DA")	// for results of DA per cell
-		Make/O/N=(len-1,len-1,2)/FREE tempDAMat0,tempDAMat1
+		Make/O/N=(len-2,len-2,2)/FREE tempDAMat0,tempDAMat1
 		tempDAMat0[][][] = (p >= q) ? vWave[p-q][r] : 0
 		tempDAMat1[][][] = (p >= q) ? vWave[p+1][r] : 0
 		MatrixOp/O/FREE dotWave = (tempDAMat0 * tempDAMat1)
