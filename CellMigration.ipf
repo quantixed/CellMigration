@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.05		// version number of Migrate()
+#pragma version=1.06		// version number of Migrate()
 #include <Waves Average>
 
 // LoadMigration contains 3 procedures to analyse cell migration in IgorPro
@@ -39,6 +39,7 @@ Function SetUpMigration()
 	DoPrompt "Specify", cond, tStep, pxSize
 	
 	Make/O/N=3 paramWave={cond,tStep,pxSize}
+	MakeColorWave(cond)
 	myIO_Panel(cond)
 End
 
@@ -52,7 +53,7 @@ Function Migrate()
 	Variable cond = paramWave[0]
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
-	MakeColorWave(cond)
+	
 	WAVE/Z colorWave = root:colorWave
 	Make/O/T/N=(cond) sum_Label
 	Make/O/N=(cond) sum_MeanSpeed, sum_SemSpeed, sum_NSpeed
@@ -100,6 +101,7 @@ Function Migrate()
 				print "Caution: different number of stationary tracks compared with real tracks."
 			endif
 		endif
+		// for each condition go and make tracks and plot everything out
 		MakeTracks(pref,i)
 		SetDataFolder root:
 	endfor
@@ -228,26 +230,45 @@ Function Migrate()
 	KillWindow/Z FilePicker
 End
 
-// This function will load the tracking data from an Excel Workbook
-/// @param pref	prefix for excel workbook e.g. "ctrl_"
+// This function will load the tracking data
+/// @param pref	prefix for condition
 /// @param	ii	variable containing row number from condWave
 Function LoadMigration(pref,ii)
 	String pref
 	Variable ii
 	
 	WAVE/T PathWave1 = root:PathWave1
+	String pathString = PathWave1[ii]
 	String sheet, prefix, matName, wList
+	String fileList
+	Variable moviemax,csvOrNot
 	Variable i
 	
-	// opens a dialog to specify xls file. Reads sheets and then loads each.
-	XLLoadWave/J=1 PathWave1[ii]
-	Variable moviemax = ItemsInList(S_value)
-	
+	if(StringMatch(pathString, "*.xls*") == 1)
+		// set variable to indicate Excel Workbook
+		csvOrNot = 0
+		// Works out what sheets are in Excel Workbook and then loads each.
+		XLLoadWave/J=1 PathWave1[ii]
+		fileList = S_value
+	else
+		// set variable to indicate csv file
+		csvOrNot = 1
+		// Work out what files are in directory
+		NewPath/O/Q ExpDiskFolder, pathString
+		fileList = IndexedFile(expDiskFolder,-1,".csv")
+	endif
+	fileList = SortList(fileList, ";", 16)
+	moviemax = ItemsInList(fileList)
+		
 	for(i = 0; i < moviemax; i += 1)
-		sheet = StringFromList(i,S_Value)
+		sheet = StringFromList(i, fileList)
 		prefix = pref + "c_" + num2str(i)
 		matName = pref + num2str(i)
-		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave1[ii]
+		if(csvOrNot == 0)
+			XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave1[ii]
+		else
+			LoadWave/A=$prefix/J/K=1/L={0,1,0,0,0}/O/P=expDiskFolder/Q sheet
+		endif
 		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
 		Concatenate/O/KILL wList, $matName
 		// check that distances and speeds are correct
@@ -255,9 +276,9 @@ Function LoadMigration(pref,ii)
 		// make sure 1st point is -1
 		matTrax[0][5,6] = -1
 		CheckDistancesAndSpeeds(matTrax)
-	endfor
-	
-	Print "*** Condition", RemoveEnding(pref), "was loaded from", S_path	
+	endfor	
+		
+	Print "*** Condition", RemoveEnding(pref), "was loaded from", pathString
 	
 	// return moviemax back to calling function for checking
 	return moviemax
@@ -294,7 +315,8 @@ Function CorrectMigration(pref,ii)
 	Variable ii
 	
 	WAVE/T PathWave2 = root:PathWave2
-	Variable len = strlen(PathWave2[ii])
+	String pathString = PathWave2[ii]
+	Variable len = strlen(pathString)
 	if(len == 0)
 		return -1
 	elseif(numtype(len) == 2)
@@ -302,17 +324,35 @@ Function CorrectMigration(pref,ii)
 	endif
 	
 	String sheet, prefix, matName, wList, mName
+	String fileList
+	Variable moviemax,csvOrNot
 	Variable i
 	
-	// opens a dialog to specify xls file. Reads sheets and then loads each.
-	XLLoadWave/J=1 PathWave2[ii]
-	Variable moviemax = ItemsInList(S_value)
-	
+	if(StringMatch(pathString, "*.xls*") == 1)
+		// set variable to indicate Excel Workbook
+		csvOrNot = 0
+		// Works out what sheets are in Excel Workbook and then loads each.
+		XLLoadWave/J=1 PathWave2[ii]
+		fileList = S_value
+	else
+		// set variable to indicate csv file
+		csvOrNot = 1
+		// Work out what files are in directory
+		NewPath/O/Q ExpDiskFolder, pathString
+		fileList = IndexedFile(expDiskFolder,-1,".csv")
+	endif
+	fileList = SortList(fileList, ";", 16)
+	moviemax = ItemsInList(fileList)
+		
 	for(i = 0; i < moviemax; i += 1)
-		sheet = StringFromList(i,S_Value)
+		sheet = StringFromList(i,fileList)
 		prefix = "stat_" + "c_" + num2str(i)	// use stat prefix
 		matName = "stat_" + num2str(i)
-		XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave2[ii]
+		if(csvOrNot == 0)
+			XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave2[ii]
+		else
+			LoadWave/A=$prefix/J/K=1/L={0,1,0,0,0}/O/P=expDiskFolder/Q sheet
+		endif
 		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
 		Concatenate/O/KILL wList, $matName
 		Wave matStat = $matName
@@ -322,8 +362,9 @@ Function CorrectMigration(pref,ii)
 		OffsetAndRecalc(matStat,matTrax)
 	endfor
 	
-	Print "*** Offset data for ondition", RemoveEnding(pref), "was loaded from", S_path
+	Print "*** Offset data for ondition", RemoveEnding(pref), "was loaded from", pathString
 
+	// return moviemax back to calling function for checking
 	return moviemax
 End
 
@@ -419,8 +460,9 @@ Function MakeTracks(pref,ii)
 				AppendtoGraph/W=$plotName $newName
 			endif
 		endfor
+		KillWaves/Z tDistW
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("cd*",";","WIN:"+ plotName)
 	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -459,8 +501,9 @@ Function MakeTracks(pref,ii)
 				AppendtoGraph/W=$plotName $newName
 			endif
 		endfor
+		KillWaves/Z tDistW
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("iv*",";","WIN:"+ plotName)
 	avName = "W_Ave_iv_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -532,12 +575,13 @@ Function MakeTracks(pref,ii)
 		endfor
 		Killwaves/Z tXW,tYW,tCellW //tidy up
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	SetAxis/W=$plotName left -250,250;DelayUpdate
-	SetAxis/W=$plotName bottom -250,250;DelayUpdate
-	ModifyGraph/W=$plotName width={Plan,1,bottom,left};DelayUpdate
-	ModifyGraph/W=$plotName mirror=1;DelayUpdate
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	SetAxis/W=$plotName left -250,250
+	SetAxis/W=$plotName bottom -250,250
+	ModifyGraph/W=$plotName width={Plan,1,bottom,left}
+	ModifyGraph/W=$plotName mirror=1
 	ModifyGraph/W=$plotName grid=1
+	ModifyGraph/W=$plotName gridRGB=(32767,32767,32767)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
@@ -564,7 +608,7 @@ Function MakeTracks(pref,ii)
 		w2[0] = NaN	// d/D at point 0 is not a number
 		AppendtoGraph/W=$plotName w2
 	Endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("dD*",";","WIN:"+ plotName)
 	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -596,13 +640,13 @@ Function MakeTracks(pref,ii)
 		// layers are x and y
 		tempMat0[][][] = (p >= q) ? w0[p+1][r] : 0
 		tempMat1[][][] = (p >= q) ? w0[p-q][r] : 0
-		MatrixOp/O tempMat2 = (tempMat0 - tempMat1) * (tempMat0 - tempMat1))
+		MatrixOp/O/FREE tempMat2 = (tempMat0 - tempMat1) * (tempMat0 - tempMat1))
 		Make/O/N=(len-1)/FREE countOfMSDPnts = (len-1)-p
 		MatrixOp/O $newName = sumcols(sumbeams(tempMat2))^t / countOfMSDPnts
 		SetScale/P x 0,tStep,"min", $newName
 		AppendtoGraph/W=$plotName $newName
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("MSD*",";","WIN:"+ plotName)
 	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -644,7 +688,7 @@ Function MakeTracks(pref,ii)
 		AppendtoGraph/W=$plotName $newName
 	endfor
 	Killwaves/Z vWave
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("DA*",";","WIN:"+ plotName)
 	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -709,39 +753,50 @@ End
 ///	@param	cond	number of conditions - determines size of box
 Function myIO_Panel(cond)
 	Variable cond
+	
+	Wave/Z colorWave = root:colorWave
 	// make global text wave to store paths
 	Make/T/O/N=(cond) condWave
 	Make/T/O/N=(cond) PathWave1,PathWave2
 	DoWindow/K FilePicker
 	NewPanel/N=FilePicker/K=1/W=(40,40,840,150+30*cond)
 	// labelling of columns
-	DrawText 30,30,"Name"
-	DrawText 180,30,"Excel workbook for cell tracking data"
-	DrawText 480,30,"Optional: workbook for stationary data" 
+	DrawText/W=FilePicker 10,30,"Name"
+	DrawText/W=FilePicker 160,30,"Cell tracking data (directory of CSVs or Excel file)"
+	DrawText/W=FilePicker 480,30,"Optional: stationary data"
+	DrawText/W=FilePicker 10,100+30*cond,"CellMigration"
 	// do it button
 	Button DoIt,pos={680,70+30*cond},size={100,20},proc=DoItButtonProc,title="Do It"
 	// insert rows
-	String ButtonName1,ButtonName2,boxName0,boxName1,boxName2
+	String buttonName1a,buttonName1b,buttonName2a,buttonName2b,boxName0,boxName1,boxName2
 	Variable i
 	
 	for(i = 0; i < cond; i += 1)
 		boxName0 = "box0_" + num2str(i)
-		buttonName1 = "file1_" + num2str(i)
+		buttonName1a = "dir1_" + num2str(i)
+		buttonName1b = "file1_" + num2str(i)
 		boxName1 = "box1_" + num2str(i)
-		buttonName2 = "file2_" + num2str(i)
+		buttonName2a = "dir2_" + num2str(i)
+		buttonName2b = "file2_" + num2str(i)
 		boxName2 = "box2_" + num2str(i)
 		// row label
-		DrawText 10,68+i*30,num2str(i+1)
+		DrawText/W=FilePicker 10,68+i*30,num2str(i+1)
 		// condition label
 		SetVariable $boxName0,pos={30,53+i*30},size={100,14},value= condWave[i], title=" "
+		// dir button
+		Button $buttonName1a,pos={160,50+i*30},size={38,20},proc=ButtonProc,title="Dir"
 		// file button
-		Button $buttonName1,pos={180,50+i*30},size={38,20},proc=ButtonProc,title="File"
-		// file box
-		SetVariable $boxName1,pos={220,53+i*30},size={240,14},value= PathWave1[i], title=" "
+		Button $buttonName1b,pos={200,50+i*30},size={38,20},proc=ButtonProc,title="File"
+		// file or dir box
+		SetVariable $boxName1,pos={240,53+i*30},size={220,14},value= PathWave1[i], title=" "
+		// stationary dir button
+		Button $buttonName2a,pos={480,50+i*30},size={38,20},proc=ButtonProc,title="Dir"
 		// stationary button
-		Button $buttonName2,pos={480,50+i*30},size={38,20},proc=ButtonProc,title="File"
-		// stationary box
-		SetVariable $boxName2,pos={520,53+i*30},size={240,14},value= PathWave2[i], title=" "
+		Button $buttonName2b,pos={520,50+i*30},size={38,20},proc=ButtonProc,title="File"
+		// stationary or dir box
+		SetVariable $boxName2,pos={560,53+i*30},size={220,14},value= PathWave2[i], title=" "
+		SetDrawEnv fillfgc=(colorWave[i][0],colorWave[i][1],colorWave[i][2])
+		DrawOval/W=FilePicker 130,50+i*30,148,68+i*30
 	endfor
 End
 
@@ -750,21 +805,33 @@ Function ButtonProc(ctrlName) : ButtonControl
 	String ctrlName
 
 	Wave/T PathWave1,PathWave2
-	Variable refnum
-	String wNumStr, iiStr
-	String expr="file([[:digit:]]+)\\w([[:digit:]]+)"
-	SplitString/E=(expr) ctrlName, wNumStr, iiStr
-	Variable wNum = str2num(wNumStr)
-	Variable ii = str2num(iiStr)
-	// get File Paths
-	Open/D/R/F="*.xls*"/M="Select Excel Workbook" refNum
-	if (strlen(S_FileName) == 0) // user cancelled or some error occured
+	Variable refnum, wNum, ii
+	String expr, wNumStr, iiStr, stringForTextWave
+
+	if(StringMatch(ctrlName,"file*") == 1)
+		expr="file([[:digit:]]+)\\w([[:digit:]]+)"
+		SplitString/E=(expr) ctrlName, wNumStr, iiStr
+		// get File Path
+		Open/D/R/F="*.xls*"/M="Select Excel Workbook" refNum
+		stringForTextWave = S_filename
+	else
+		expr="dir([[:digit:]]+)\\w([[:digit:]]+)"
+		SplitString/E=(expr) ctrlName, wNumStr, iiStr
+		// set outputfolder
+		NewPath/O/Q DirOfCSVs
+		PathInfo DirOfCSVs
+		stringForTextWave = S_Path
+	endif
+
+	if (strlen(stringForTextWave) == 0) // user pressed cancel
 		return -1
 	endif
+	wNum = str2num(wNumStr)
+	ii = str2num(iiStr)
 	if (wNum == 1)
-		PathWave1[ii] = S_fileName
+		PathWave1[ii] = stringForTextWave
 	else
-		PathWave2[ii] = S_fileName
+		PathWave2[ii] = stringForTextWave
 	endif
 End
 
@@ -917,13 +984,13 @@ Function MakeColorWave(cond)
 	
 	for(i = 0; i < cond; i += 1)
 		// specify colours
-		if(cond < 12)
+		if(cond <= 12)
 			color = str2num(StringFromList(i,pal))
 			vR = hexcolor_red(color)
 			vG = hexcolor_green(color)
 			vB = hexcolor_blue(color)
 		else
-			color = str2num(StringFromList(round((i)/12),pal))
+			color = str2num(StringFromList(round((i/cond) * 12),pal))
 			vR = hexcolor_red(color)
 			vG = hexcolor_green(color)
 			vB = hexcolor_blue(color)
