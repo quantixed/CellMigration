@@ -56,5 +56,3 @@ Written for IgorPro 7. From v 1.03 there is no back-compatability for IgorPro 6.
 \*  *Excel:* Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
 
 \*  *Offsetting:* For offsetting data, a workbook per condition is needed with corresponding sheets to the primary data. It is important that every frame has a tracked point.
-
-\* For experiments where a manipulation is done partway through the experiment (e.g. adding a drug). Suggest that pre and post conditions are kept in separate workbooks. Analyzing them will give statistics for each condition (pre and post). If you'd like to stitch the tracks together to analyze data per cell, as long as the tracks are named consistently and the conditions feature *pre* and *post*, you can use `MigrationAuxProcs.ipf` to do this. Execute `StitchIV()` to generate a report of this type.

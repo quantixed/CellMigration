@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.06		// version number of Migrate()
+#pragma version=1.07		// version number of Migrate()
 #include <Waves Average>
 
 // LoadMigration contains 3 procedures to analyse cell migration in IgorPro
@@ -431,7 +431,7 @@ Function MakeTracks(pref,ii)
 	
 	String layoutName = pref + "layout"
 	KillWindow/Z $layoutName		// Kill the layout if it exists
-	NewLayout/HIDE=1/N=$layoutName		// Igor 7 has multipage layouts, using separate layouts for now.
+	NewLayout/HIDE=1/N=$layoutName	
 
 	// cumulative distance and plot over time	
 	plotName = pref + "cdplot"
@@ -746,6 +746,136 @@ Function MakeTracks(pref,ii)
 	Execute /Q "Tile"
 	TextBox/C/N=text0/F=0/A=RB/X=0.00/Y=0.00 ReplaceString("_",pref,"")
 	DoUpdate
+End
+
+// This function will make ImageQuilts of 2D tracks
+/// @param qSize	Variable to indicate desired size of image quilt (qSize^2 tracks)
+/// @param idealLength	Variable to indicate desired duration of tracks in minutes
+Function MakeImageQuilt(qSize)
+	Variable qSize
+	
+	WAVE/T condWave = root:condWave
+	Variable cond = numpnts(condWave)
+	Wave paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	Wave colorWave = root:colorWave
+	String condName, dataFolderName, wName
+	Variable longestCond = 0 , mostFrames = 0
+	
+	Variable i
+	
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		dataFolderName = "root:data:" + condName
+		SetDataFolder datafolderName
+		mostFrames = FindSolution()
+		longestCond = max(longestCond,mostFrames)
+	endfor
+	SetDataFolder root:
+	// Now they're all done, cycle again to find optimum quilt size
+	Make/O/N=(longestCond,qSize+1,cond)/FREE optiMat
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		wName = "root:data:" + condName + ":solutionWave"
+		Wave w0 = $wName
+		optiMat[][][i] = (w0[p][0] >= q^2) ? 1 : 0
+	endfor
+	optiMat /= cond
+	// make a 1D wave where row = qSize and value = frames that can be plotted for all cond
+	MatrixOp/O/FREE quiltSizeMat = sumcols(floor(sumBeams(optiMat)))^t
+	// find optimum
+	quiltSizeMat *= p^2
+	WaveStats/Q quiltSizeMat
+	Variable optQSize = V_maxRowLoc
+	Variable optDur = (V_max / V_maxRowLoc^2) - 1 // because 0-based
+	Print qSize, "x", qSize, "quilt requested.", optQSize, "x", optQSize, "quilt with", optDur, "frames shown."
+	
+	String plotName
+	Variable startVar,endVar,xShift,yShift
+	Variable spaceVar = 100 // this might need changing
+	Variable j
+	
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		dataFolderName = "root:data:" + condName
+		SetDataFolder datafolderName
+		plotName = condName + "_quilt"
+		KillWindow/Z $plotName
+		Display/N=$plotName
+		WAVE segValid, trackDurations
+		WAVE/T trackNames
+		segValid[] = (trackDurations[p] > optDur * tStep) ? p : NaN
+		WaveTransform zapnans segValid
+		StatsSample/N=(optQSize^2) segValid
+		WAVE/Z W_Sampled
+		Duplicate/O W_Sampled, segSelected
+		Make/O/N=(optQSize^2)/T segNames
+		Make/O/N=(optQSize^2) segLengths
+		for(j = 0; j < optQSize^2; j += 1)
+			segNames[j] = trackNames[segSelected[j]]
+			wName = ReplaceString("tk_",segNames[j],"cd_") // get cum dist wave name
+			Wave cdW0 = $wName
+			segLengths[j] = cdW0[optDur] // store cum dist at point optDur
+		endfor
+		Sort segLengths, segLengths, segNames
+		// plot segNamed waves out
+		Make/O/N=(optQSize^2*(optDur+1),2) quiltBigMat = NaN
+		for(j = 0; j < optQSize^2; j += 1)
+			wName = segNames[j]
+			Wave tkW0 = $wName
+			// put each track into the big quilt wave leaving a NaN between each
+			startVar = j * optDur + (j * 1)
+			endVar = startVar + optDur - 1
+			quiltBigMat[startVar,endVar][] = tkW0[p-startVar][q]
+			xShift = mod(j,optQSize) * spaceVar
+			yShift = floor(j/optQSize) * spaceVar
+			quiltBigMat[startVar,endVar][0] += xShift
+			quiltBigMat[startVar,endVar][1] += yShift
+		endfor
+		// Add to plot and then format
+		AppendToGraph/W=$plotName quiltBigMat[][1] vs quiltBigMat[][0]
+		SetAxis/W=$plotName left (optQsize+0.5) * spaceVar,-1.5*spaceVar
+		SetAxis/W=$plotName bottom -1.5*spaceVar,(optQsize+0.5) * spaceVar
+		ModifyGraph/W=$plotName width={Aspect,1}
+		ModifyGraph/W=$plotName manTick={0,100,0,0},manMinor={0,0}
+		ModifyGraph/W=$plotName noLabel=2,mirror=1,standoff=0,tick=3
+		ModifyGraph/W=$plotName grid=1,gridRGB=(34952,34952,34952)
+		ModifyGraph axRGB=(65535,65535,65535)
+		ModifyGraph/W=$plotName rgb=(colorWave[i][0],colorWave[i][1],colorWave[i][2])
+		ModifyGraph/W=$plotName margin=14
+		// Append to appropriate layout (page 2)
+		String layoutName = condName + "_layout"
+		LayoutPageAction/W=$layoutName appendPage
+		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
+	endfor
+	SetDataFolder root:
+End
+
+Function FindSolution()
+	String wList = WaveList("tk_*",";","")
+	Variable nWaves = ItemsInList(wList)
+	Make/O/N=(nWaves)/T trackNames
+	Make/O/N=(nWaves) trackDurations, segValid
+	Wave paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	String wName
+	
+	Variable i
+	
+	for(i = 0; i < nWaves; i += 1)
+		wName = StringFromList(i,wList)
+		trackNames[i] = wName
+		Wave w0 = $wName
+		trackDurations[i] = dimsize(w0,0) * tStep
+	endfor
+	
+	// how many are longer than x hrs?
+	Variable mostFrames = round(WaveMax(trackDurations) / tStep)
+	Make/O/N=(mostFrames,nWaves) solutionMat
+	// Find tracks that are longer than a given length of time
+	solutionMat[][] = (trackDurations[q] > p * tStep) ? 1 : 0
+	MatrixOp/O solutionWave = sumRows(solutionMat)
+	return mostFrames
 End
 
 ///////////////////////////////////////////////////////////////////////
