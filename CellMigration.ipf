@@ -1,13 +1,20 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.07		// version number of Migrate()
+#pragma version=1.08		// version number of Migrate()
 #include <Waves Average>
 
-// LoadMigration contains 3 procedures to analyse cell migration in IgorPro
-// Use ImageJ to track the cells. Outputs from tracking are saved in sheets in an Excel Workbook, 1 per condition
-// Execute Migrate().
-// This function will trigger the load and the analysis of cell migration via two functions
-// LoadMigration() - will load all sheets of migration data from a specified excel file
-// MakeTracks() - does the analysis
+// CellMigration will analyse 2D cell migration in IgorPro
+// Use ImageJ to track the cells. Outputs from tracking are saved either 
+// 1) as sheets in an Excel Workbook, 1 per condition, or
+// 2) as direct outputs from Manual Tracking, in csv format
+// 
+// Select Macros > Cell Migration...
+//
+// Tell the dialog how many conditions you want to load and the magnification and time resolution
+// Next, give each condition a label (name) and then tell Igor where to find the data
+// Either an Excel workbook (per condition) or a directory of CSVs (per condition)
+// There is also the ability to define "offsetting data", in the case of XY drift during the experiment.
+//
+// For Excel workbooks:
 // NOTE no headers in Excel file. Keep data to columns A-H, max of 2000 rows
 // columns are
 // A - 0 - ImageJ row
@@ -16,7 +23,7 @@
 // D - 3 - x (in px)
 // E - 4 - y (in px)
 // F - 5 - distance
-// G - 6 - speed
+// G - 6 - velocity (actually speed)
 // H - 7 - pixel value
 
 // Menu item for easy execution
@@ -105,6 +112,10 @@ Function Migrate()
 		MakeTracks(pref,i)
 		SetDataFolder root:
 	endfor
+	
+	// make the image quilts and then sort out the layouts
+	MakeImageQuilt(10)
+	TidyCondSpecificLayouts()
 	
 	KillWindow/Z summaryLayout
 	NewLayout/N=summaryLayout
@@ -736,16 +747,6 @@ Function MakeTracks(pref,ii)
 	AppendToGraph/W=DAPlot $avName
 	ErrorBars/W=DAPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	
-	// Tidy report
-	DoWindow/F $layoutName
-	// in case these are not captured as prefs
-	LayoutPageAction size(-1)=(595, 842), margins(-1)=(18, 18, 18, 18)
-	ModifyLayout units=0
-	ModifyLayout frame=0,trans=1
-	Execute /Q "Tile"
-	TextBox/C/N=text0/F=0/A=RB/X=0.00/Y=0.00 ReplaceString("_",pref,"")
-	DoUpdate
 End
 
 // This function will make ImageQuilts of 2D tracks
@@ -788,20 +789,21 @@ Function MakeImageQuilt(qSize)
 	WaveStats/Q quiltSizeMat
 	Variable optQSize = V_maxRowLoc
 	Variable optDur = (V_max / V_maxRowLoc^2) - 1 // because 0-based
-	Print qSize, "x", qSize, "quilt requested.", optQSize, "x", optQSize, "quilt with", optDur, "frames shown."
+	Print qSize, "x", qSize, "quilt requested.", optQSize, "x", optQSize, "quilt with", optDur, "frames shown (", optDur * tStep, "min)."
 	
 	String plotName
 	Variable startVar,endVar,xShift,yShift
 	Variable spaceVar = 100 // this might need changing
-	Variable j
+	Variable j,k
 	
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
 		SetDataFolder datafolderName
+		// make image quilt for each condition
 		plotName = condName + "_quilt"
 		KillWindow/Z $plotName
-		Display/N=$plotName
+		Display/N=$plotName/HIDE=1
 		WAVE segValid, trackDurations
 		WAVE/T trackNames
 		segValid[] = (trackDurations[p] > optDur * tStep) ? p : NaN
@@ -847,6 +849,46 @@ Function MakeImageQuilt(qSize)
 		String layoutName = condName + "_layout"
 		LayoutPageAction/W=$layoutName appendPage
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=21,width($plotName)=261,height($plotName)=261
+		// make sparkline graphic
+		plotName = condName + "_sprkln"
+		KillWindow/Z $plotName
+		Display/N=$plotName/HIDE=1
+		// plot the diagonal of segNamed waves out laterally
+		Make/O/N=(optQSize*(optDur+1),2) sprklnBigMat = NaN
+		Variable theta
+		k = 0
+		for(j = 0; j < optQSize^2; j += optQsize+1)
+			wName = segNames[j]
+			Wave tkW0 = $wName
+			Duplicate/O/FREE tkW0, sprkW0
+			theta = (1.5 * pi) - atan2(sprkW0[optDur-1][1],sprkW0[optDur-1][0])
+			Make/O/N=(2,2)/FREE rotMat = {{cos(theta),-sin(theta)},{sin(theta),cos(theta)}}
+			MatrixMultiply sprkW0, rotMat
+			WAVE/Z M_product
+			// put each track into the big quilt wave leaving a NaN between each
+			startVar = k * optDur + (k * 1)
+			endVar = startVar + optDur - 1
+			sprklnBigMat[startVar,endVar][] = M_Product[p-startVar][q]
+			xShift = mod(k,optQSize) * spaceVar
+			sprklnBigMat[startVar,endVar][0] += xShift
+			k += 1
+		endfor
+		KillWaves/Z M_product
+		// Add to plot and then format
+		AppendToGraph/W=$plotName sprklnBigMat[][1] vs sprklnBigMat[][0]
+		SetAxis/W=$plotName left 0.5 * spaceVar,-1.5*spaceVar
+		SetAxis/W=$plotName bottom -1.5*spaceVar,(optQsize+0.5) * spaceVar
+		ModifyGraph/W=$plotName width={Plan,1,bottom,left}
+		ModifyGraph/W=$plotName manTick={0,100,0,0},manMinor={0,0}
+		ModifyGraph/W=$plotName noLabel=2,mirror=1,standoff=0,tick=3
+		ModifyGraph/W=$plotName grid=1,gridRGB=(34952,34952,34952)
+		ModifyGraph axRGB=(65535,65535,65535)
+		ModifyGraph/W=$plotName rgb=(colorWave[i][0],colorWave[i][1],colorWave[i][2])
+		ModifyGraph/W=$plotName margin=14
+		// Append to appropriate layout (page 2)
+		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=291,width($plotName)=488,height($plotName)=120
 	endfor
 	SetDataFolder root:
 End
@@ -879,7 +921,7 @@ Function FindSolution()
 End
 
 ///////////////////////////////////////////////////////////////////////
-
+// BACKGROUND FUNCTIONS
 ///	@param	cond	number of conditions - determines size of box
 Function myIO_Panel(cond)
 	Variable cond
@@ -1033,7 +1075,7 @@ STATIC function NameChecker(TextWaveToCheck)
 End
 
 ///////////////////////////////////////////////////////////////////////
-
+// UTILITY FUNCTIONS
 // Colours are taken from Paul Tol SRON stylesheet
 // Define colours
 StrConstant SRON_1 = "0x4477aa;"
@@ -1153,17 +1195,30 @@ STATIC Function CleanSlate()
 	endfor
 End
 
-// This function reshuffles the plots so that they will be tiled (LR, TB) in the order that they were created
-// From v 1.03 all plots are hidden so this function is commented out of workflow
-Function OrderGraphs()
-	String list = WinList("*", ";", "WIN:1")		// List of all graph windows
-	Variable numWindows = ItemsInList(list)
+Function TidyCondSpecificLayouts()
+	WAVE/T condWave = root:condWave
+	String layoutName,condName,boxName
+	Variable cond = numpnts(condWave)
+	Variable pgMax = 2
+	Variable i,j
 	
-	Variable i
-	
-	for(i = 0; i < numWindows; i += 1)
-		String name = StringFromList(i, list)
-		DoWindow /F $name
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		layoutName = condName + "_layout"
+		DoWindow/F $layoutName
+		for(j = 1; j < pgMax + 1; j += 1)
+			LayoutPageAction/W=$layoutName page=(j)
+			LayoutPageAction/W=$layoutName size(-1)=(595, 842), margins(-1)=(18, 18, 18, 18)
+			ModifyLayout/W=$layoutName units=0
+			ModifyLayout/W=$layoutName frame=0,trans=1
+			if(j == 1)
+				Execute /Q "Tile"
+			endif
+			boxName = "text" + num2str(j)
+			TextBox/W=$layoutName/C/N=$boxName/F=0/A=RB/X=0.00/Y=0.00 condName
+		endfor
+		LayoutPageAction/W=$layoutName page=(1)
+		DoUpdate
 	endfor
 End
 
