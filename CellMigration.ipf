@@ -531,7 +531,7 @@ Function MakeTracks(pref,ii)
 	Display/N=$plotName/HIDE=1
 	
 	Concatenate/O/NP avList, tempwave
-	newName = pref + "ivHist"	// note that this makes a name like Ctrl_ivHist
+	newName = "h_" + pref + "ivHist"	// note that this makes a name like h_Ctrl_ivHist
 	Variable bval=ceil(wavemax(tempwave)/(sqrt((3*pxsize)^2)/tStep))
 	Make/O/N=(bval) $newName
 	Histogram/P/B={0,(sqrt((3*pxsize)^2)/tStep),bVal} tempwave,$newName
@@ -713,6 +713,60 @@ Function MakeTracks(pref,ii)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
+	// calculate the angle distribution
+	plotName = pref + "anglePlot"
+	KillWindow/Z $plotName	// setup plot
+	Display/N=$plotName/HIDE=1
+	wList0 = WaveList(pref + "*",";","") // find all matrices
+	nWaves = ItemsInList(wList0)
+	Concatenate/O/NP=0 wList0, allTempW
+	Variable nSteps = dimsize(allTempW,0)
+	Make/O/N=(nSteps)/FREE tempDistThreshW
+	Make/O/D/N=(nSteps) angleWave = NaN
+	tempDistThreshW[] = (allTempW[p][5] > 4 * pxSize) ? 1 : 0
+	Variable successVar = 0 
+	
+	for(i = 0; i < nSteps; i += 1)
+		if(tempDistThreshW[i] == 1)
+			Make/O/N=(2,2)/FREE matAA,matBB
+			matAA[][] = allTempW[p + (i-1)][q+3] - allTempW[i-1][q+3]
+			for(j = i+1; j < nSteps; j += 1)
+				if(allTempW[j][1] != allTempW[i][1])
+					successVar = 0
+					break
+				elseif(tempDistThreshW[j] == 1)
+					successVar = 1
+					matBB[][] = allTempW[p + (j-1)][q+3] - allTempW[j-1][q+3]
+					break
+				else
+					successVar = 0
+				endif
+			endfor
+			
+			if(successVar == 1)
+				MatrixTranspose matAA
+				MatrixTranspose matBB
+				MatrixOp/O/FREE matCC = matAA . matBB / (sqrt(sum(matAA * matAA)) * sqrt(sum(matBB * matBB)))
+				AngleWave[i] = acos(matCC[0])
+			endif
+		endif
+	endfor
+	KillWaves/Z allTempW
+	Make/N=50/O angleWave_Hist
+	Histogram/P/B={0,pi/50,50} angleWave,angleWave_Hist
+	AppendToGraph/W=$plotName AngleWave_Hist
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	ModifyGraph/W=$plotName mode=5, hbFill=4
+	SetAxis/W=$plotName/A/N=1/E=1 left
+	SetAxis/W=$plotName bottom 0,pi
+	Make/O/N=5 axisW = {0,pi/4,pi/2,3*pi/4,pi}
+	Make/O/N=5/T axisTW = {"0","\u00BD\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
+	ModifyGraph/W=$plotName userticks(bottom)={axisW,axisTW}	
+	Label/W=$plotName left "Density"
+	Label/W=$plotName bottom "Cell turning"
+	
+	AppendLayoutObject/W=$layoutName graph $plotName
+	
 	// Plot these summary windows at the end
 	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
@@ -726,7 +780,7 @@ Function MakeTracks(pref,ii)
 	ErrorBars/W=ivPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
-	newName = pref + "ivHist"
+	newName = "h_" + pref + "ivHist"
 	AppendToGraph/W=ivHPlot $newName
 	ModifyGraph/W=ivHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
