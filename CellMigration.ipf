@@ -28,7 +28,9 @@
 
 // Menu item for easy execution
 Menu "Macros"
-	"Cell Migration...",  SetUpMigration()
+	"Cell Migration...", /Q, SetUpMigration()
+	"Save Reports...", /Q, SaveAllReports()
+	"Recolor Everything...", /Q, RecolorAllPlots()
 End
 
 Function SetUpMigration()
@@ -57,22 +59,20 @@ Function Migrate()
 		Abort "Setup has failed. Missing paramWave."
 	endif
 	
+	// pick up global values needed
 	Variable cond = paramWave[0]
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
-	
 	WAVE/Z colorWave = root:colorWave
-	Make/O/T/N=(cond) sum_Label
-	Make/O/N=(cond) sum_MeanSpeed, sum_SemSpeed, sum_NSpeed
-	Make/O/N=(cond) sum_MeanIV, sum_SemIV
+	WAVE/T condWave = root:condWave
 	
-	String pref, lab
-	
-	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;"
+	// make summary plot windows
+	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;angleHPlot"
+	Variable nPlots = ItemsInList(fullList)
 	String name
 	Variable i
 	
-	for(i = 0; i < 6; i += 1)
+	for(i = 0; i < nPlots; i += 1)
 		name = StringFromList(i, fullList)
 		KillWindow/Z $name
 		Display/N=$name/HIDE=1		
@@ -81,29 +81,25 @@ Function Migrate()
 	String dataFolderName = "root:data"
 	NewDataFolder/O $dataFolderName // make root:data: but don't put anything in it yet
 	
-	WAVE/T condWave = root:condWave
+	String condName,pref
 	Variable moviemax1, moviemax2
 	
 	for(i = 0; i < cond; i += 1)
-		pref = condWave[i]
-		
-		// add underscore if user forgets
-		if(StringMatch(pref,"*_") == 0)
-			pref = pref + "_"
+		condName = condWave[i]
+		// add underscore if there isn't one
+		if(StringMatch(condName,"*_") == 0)
+			pref = condName + "_"
 		endif
-		// make label wave from graphs (underscore-less)
-		lab = ReplaceString("_",pref,"")
-		sum_Label[i] = lab
 		
-		// make data folder
-		dataFolderName = "root:data:" + RemoveEnding(pref)
+		// make data folder for each condition
+		dataFolderName = "root:data:" + condName
 		NewDataFolder/O/S $dataFolderName
 		// run other procedures
 		moviemax1 = LoadMigration(pref,i)
 		moviemax2 = CorrectMigration(pref,i)
 		if(moviemax1 != moviemax2)
 			if(moviemax2 == -1)
-				print "No correction applied to", RemoveEnding(pref)
+				print "No correction applied to", condName
 			else
 				print "Caution: different number of stationary tracks compared with real tracks."
 			endif
@@ -114,127 +110,12 @@ Function Migrate()
 	endfor
 	
 	// make the image quilts and then sort out the layouts
-	MakeImageQuilt(10)
+	MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
 	TidyCondSpecificLayouts()
 	
 	KillWindow/Z summaryLayout
 	NewLayout/N=summaryLayout
-	
-	// Tidy up summary windows
-	SetAxis/W=cdPlot/A/N=1 left
-	Label/W=cdPlot left "Cumulative distance (µm)"
-	Label/W=cdPlot bottom "Time (min)"
-		AppendLayoutObject /W=summaryLayout graph cdPlot
-	SetAxis/W=ivPlot/A/N=1 left
-	Label/W=ivPlot left "Instantaneous Speed (µm/min)"
-	Label/W=ivPlot bottom "Time (min)"
-		AppendLayoutObject /W=summaryLayout graph ivPlot
-	SetAxis/W=ivHPlot/A/N=1 left
-	SetAxis/W=ivHPlot bottom 0,2
-	Label/W=ivHPlot left "Frequency"
-	Label/W=ivHPlot bottom "Instantaneous Speed (µm/min)"
-	ModifyGraph/W=ivHPlot mode=6
-		AppendLayoutObject /W=summaryLayout graph ivHPlot
-	Label/W=dDPlot left "Directionality ratio (d/D)"
-	Label/W=dDPlot bottom "Time (min)"
-		AppendLayoutObject /W=summaryLayout graph dDPlot
-	ModifyGraph/W=MSDPlot log=1
-	SetAxis/W=MSDPlot/A/N=1 left
-	Wave w = WaveRefIndexed("MSDPlot",0,1)
-	SetAxis/W=MSDPlot bottom tStep,((numpnts(w) * tStep)/2)
-	Label/W=MSDPlot left "MSD"
-	Label/W=MSDPlot bottom "Time (min)"
-		AppendLayoutObject /W=summaryLayout graph MSDPlot
-	SetAxis/W=DAPlot left 0,1
-	Wave w = WaveRefIndexed("DAPlot",0,1)
-	SetAxis/W=DAPlot bottom 0,((numpnts(w)*tStep)/2)
-	Label/W=DAPlot left "Direction autocorrelation"
-	Label/W=DAPlot bottom "Time (min)"
-		AppendLayoutObject /W=summaryLayout graph DAPlot
-	
-	// average the speed data from all conditions	
-	String wList, newName, wName
-	Variable nTracks, last, j
-	
-	for(i = 0; i < cond; i += 1)
-		pref = sum_Label[i] + "_"
-		dataFolderName = "root:data:" + RemoveEnding(pref)
-		SetDataFolder $dataFolderName
-		wList = WaveList("cd_" + pref + "*", ";","")
-		nTracks = ItemsInList(wList)
-		newName = "sum_Speed_" + RemoveEnding(pref)
-		Make/O/N=(nTracks) $newName
-		WAVE w0 = $newName
-		for(j = 0; j < nTracks; j += 1)
-			wName = StringFromList(j,wList)
-			Wave w1 = $wName
-			last = numpnts(w1) - 1	// finds last row (max cumulative distance)
-			w0[j] = w1[last]/(last*tStep)	// calculates speed
-		endfor
-		WaveStats/Q w0
-		sum_MeanSpeed[i] = V_avg
-		sum_SemSpeed[i] = V_sem
-		sum_NSpeed[i] = V_npnts
-	endfor
-	KillWindow/Z SpeedTable
-	Edit/N=SpeedTable/HIDE=1 sum_Label,sum_MeanSpeed,sum_MeanSpeed,sum_SemSpeed,sum_NSpeed
-	KillWindow/Z SpeedPlot
-	Display/N=SpeedPlot/HIDE=1 sum_MeanSpeed vs sum_Label
-	Label/W=SpeedPlot left "Speed (µm/min)"
-	SetAxis/W=SpeedPlot/A/N=1/E=1 left
-	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
-	ModifyGraph/W=SpeedPlot zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
-	ModifyGraph/W=SpeedPlot hbFill=2
-	AppendToGraph/R/W=SpeedPlot sum_MeanSpeed vs sum_Label
-	SetAxis/W=SpeedPlot/A/N=1/E=1 right
-	ModifyGraph/W=SpeedPlot hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
-	ModifyGraph/W=SpeedPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
-	ErrorBars/W=SpeedPlot sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
-		AppendLayoutObject /W=summaryLayout graph SpeedPlot
-	
-	// average instantaneous speed variances
-	for(i = 0; i < cond; i += 1) // loop through conditions, 0-based
-		pref = sum_Label[i] + "_"
-		dataFolderName = "root:data:" + RemoveEnding(pref)
-		SetDataFolder $dataFolderName
-		wList = WaveList("iv_" + pref + "*", ";","")
-		nTracks = ItemsInList(wList)
-		newName = "sum_ivVar_" + ReplaceString("_",pref,"")
-		Make/O/N=(nTracks) $newName
-		WAVE w0 = $newName
-		for(j = 0; j < nTracks; j += 1)
-			wName = StringFromList(j,wList)
-			Wave w1 = $wName
-			w0[j] = variance(w1)	// calculate varance for each cell
-		endfor
-		WaveStats/Q w0
-		sum_MeanIV[i] = V_avg
-		sum_SemIV[i] = V_sem
-	endfor
-	AppendToTable/W=SpeedTable sum_MeanIV,sum_SemIV
-	KillWindow/Z IVCatPlot
-	Display/N=IVCatPlot/HIDE=1 sum_MeanIV vs sum_Label
-	Label/W=IVCatPlot left "Variance (µm/min)"
-	SetAxis/W=IVCatPlot/A/N=1/E=1 left
-	ErrorBars/W=IVCatPlot sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
-	ModifyGraph/W=IVCatPlot zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
-	ModifyGraph/W=IVCatPlot hbFill=2
-	AppendToGraph/R/W=IVCatPlot sum_MeanIV vs sum_Label
-	SetAxis/W=IVCatPlot/A/N=1/E=1 right
-	ModifyGraph/W=IVCatPlot hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
-	ModifyGraph/W=IVCatPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
-	ErrorBars/W=IVCatPlot sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
-		AppendLayoutObject /W=summaryLayout graph IVCatPlot
-	
-	SetDataFolder root:
-	
-	// Tidy summary layout
-	DoWindow/F summaryLayout
-	// in case these are not captured as prefs
-	LayoutPageAction size(-1)=(595, 842), margins(-1)=(18, 18, 18, 18)
-	ModifyLayout units=0
-	ModifyLayout frame=0,trans=1
-	Execute /Q "Tile"
+	TidyUpSummaryLayout()
 
 	// when we get to the end, print (pragma) version number
 	Print "*** Executed Migrate v", GetProcedureVersion("CellMigration.ipf")
@@ -242,7 +123,7 @@ Function Migrate()
 End
 
 // This function will load the tracking data
-/// @param pref	prefix for condition
+/// @param pref	prefix for condition i.e. "ctrl_" not "ctrl"
 /// @param	ii	variable containing row number from condWave
 Function LoadMigration(pref,ii)
 	String pref
@@ -480,6 +361,7 @@ Function MakeTracks(pref,ii)
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Cumulative distance (µm)"
+	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -521,10 +403,13 @@ Function MakeTracks(pref,ii)
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Instantaneous Speed (µm/min)"
+	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
+	// print a message to say how many valid tracks we have in this condition
+	Print ItemsInList(avList), "valid tracks plotted for", RemoveEnding(pref)
 	
 	plotName = pref + "ivHist"
 	KillWindow/Z $plotName	//set up plot
@@ -719,22 +604,30 @@ Function MakeTracks(pref,ii)
 	Display/N=$plotName/HIDE=1
 	wList0 = WaveList(pref + "*",";","") // find all matrices
 	nWaves = ItemsInList(wList0)
-	Concatenate/O/NP=0 wList0, allTempW
+	Concatenate/O/NP=0 wList0, allTempW // make long matrix of all tracks
 	Variable nSteps = dimsize(allTempW,0)
 	Make/O/N=(nSteps)/FREE tempDistThreshW
 	Make/O/D/N=(nSteps) angleWave = NaN
+	// quality filter so that minimal steps are not analysed
 	tempDistThreshW[] = (allTempW[p][5] > 4 * pxSize) ? 1 : 0
 	Variable successVar = 0 
+	// this will find angles for all tracks even short tracks
+	// valid track length has a lower bound of 1 h (v. 1.08)
+	// at tStep = 10 this will find max 4 angles in a track that is not found elsewhere 
 	
 	for(i = 0; i < nSteps; i += 1)
+		// find a proper step
 		if(tempDistThreshW[i] == 1)
 			Make/O/N=(2,2)/FREE matAA,matBB
+			// set first vector offset to origin (need to transpose later)
 			matAA[][] = allTempW[p + (i-1)][q+3] - allTempW[i-1][q+3]
 			for(j = i+1; j < nSteps; j += 1)
 				if(allTempW[j][1] != allTempW[i][1])
+					// check there is another proper step from the same cell
 					successVar = 0
 					break
 				elseif(tempDistThreshW[j] == 1)
+					// find a proper step from same cell and set second vector as this, offset to origin
 					successVar = 1
 					matBB[][] = allTempW[p + (j-1)][q+3] - allTempW[j-1][q+3]
 					break
@@ -744,30 +637,39 @@ Function MakeTracks(pref,ii)
 			endfor
 			
 			if(successVar == 1)
+				// matrices need transposing
 				MatrixTranspose matAA
 				MatrixTranspose matBB
+				// find cos(theta)
 				MatrixOp/O/FREE matCC = matAA . matBB / (sqrt(sum(matAA * matAA)) * sqrt(sum(matBB * matBB)))
+				// angle in radians
 				AngleWave[i] = acos(matCC[0])
 			endif
 		endif
 	endfor
 	KillWaves/Z allTempW
-	Make/N=50/O angleWave_Hist
-	Histogram/P/B={0,pi/50,50} angleWave,angleWave_Hist
-	AppendToGraph/W=$plotName AngleWave_Hist
+	// zapnans on AngleWave so I can count valid angles
+	WaveTransform zapnans AngleWave
+	newName = "h_" + pref + "angleHist"
+	Make/N=50/O $newName
+	Histogram/P/B={0,pi/50,50} angleWave,$newName
+	AppendToGraph/W=$plotName $newName
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	ModifyGraph/W=$plotName mode=5, hbFill=4
 	SetAxis/W=$plotName/A/N=1/E=1 left
 	SetAxis/W=$plotName bottom 0,pi
 	Make/O/N=5 axisW = {0,pi/4,pi/2,3*pi/4,pi}
+	// vulgar fractions and pi as Unicode
 	Make/O/N=5/T axisTW = {"0","\u00BD\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
 	ModifyGraph/W=$plotName userticks(bottom)={axisW,axisTW}	
 	Label/W=$plotName left "Density"
 	Label/W=$plotName bottom "Cell turning"
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
+	// print message about number of angles
+	Print numpnts(AngleWave), "valid angles found from all tracks for", RemoveEnding(pref)
 	
-	// Plot these summary windows at the end
+	// Plot these averages to summary windows at the end
 	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=cdPlot $avName
@@ -801,6 +703,10 @@ Function MakeTracks(pref,ii)
 	AppendToGraph/W=DAPlot $avName
 	ErrorBars/W=DAPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+	
+	newName = "h_" + pref + "angleHist"
+	AppendToGraph/W=angleHPlot $newName
+	ModifyGraph/W=angleHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 End
 
 // This function will make ImageQuilts of 2D tracks
@@ -972,6 +878,142 @@ Function FindSolution()
 	solutionMat[][] = (trackDurations[q] > p * tStep) ? 1 : 0
 	MatrixOp/O solutionWave = sumRows(solutionMat)
 	return mostFrames
+End
+
+// Function to sort out the summary layout
+// Traces have been added and colored as we went along, but now to format them
+// and add some summary graphs
+Function TidyUpSummaryLayout()
+	SetDataFolder root:
+	WAVE/T condWave = root:condWave
+	Variable cond = numpnts(condWave)
+	Wave paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	Wave colorWave = root:colorWave
+
+	// Tidy up summary windows
+	SetAxis/W=cdPlot/A/N=1 left
+	Label/W=cdPlot left "Cumulative distance (µm)"
+	Label/W=cdPlot bottom "Time (min)"
+		AppendLayoutObject /W=summaryLayout graph cdPlot
+	SetAxis/W=ivPlot/A/N=1 left
+	Label/W=ivPlot left "Instantaneous Speed (µm/min)"
+	Label/W=ivPlot bottom "Time (min)"
+		AppendLayoutObject /W=summaryLayout graph ivPlot
+	SetAxis/W=ivHPlot/A/N=1 left
+	SetAxis/W=ivHPlot bottom 0,2
+	Label/W=ivHPlot left "Frequency"
+	Label/W=ivHPlot bottom "Instantaneous Speed (µm/min)"
+	ModifyGraph/W=ivHPlot mode=6
+		AppendLayoutObject /W=summaryLayout graph ivHPlot
+	Label/W=dDPlot left "Directionality ratio (d/D)"
+	Label/W=dDPlot bottom "Time (min)"
+		AppendLayoutObject /W=summaryLayout graph dDPlot
+	ModifyGraph/W=MSDPlot log=1
+	SetAxis/W=MSDPlot/A/N=1 left
+	Wave w = WaveRefIndexed("MSDPlot",0,1)
+	SetAxis/W=MSDPlot bottom tStep,((numpnts(w) * tStep)/2)
+	Label/W=MSDPlot left "MSD"
+	Label/W=MSDPlot bottom "Time (min)"
+		AppendLayoutObject /W=summaryLayout graph MSDPlot
+	SetAxis/W=DAPlot left 0,1
+	Wave w = WaveRefIndexed("DAPlot",0,1)
+	SetAxis/W=DAPlot bottom 0,((numpnts(w)*tStep)/2)
+	Label/W=DAPlot left "Direction autocorrelation"
+	Label/W=DAPlot bottom "Time (min)"
+		AppendLayoutObject /W=summaryLayout graph DAPlot
+	SetAxis/W=angleHPlot/A/N=1/E=1 left
+	SetAxis/W=angleHPlot bottom 0,pi
+	Make/O/N=5 axisW = {0,pi/4,pi/2,3*pi/4,pi}
+	Make/O/N=5/T axisTW = {"0","\u00BD\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
+	ModifyGraph/W=angleHPlot userticks(bottom)={axisW,axisTW}	
+	Label/W=angleHPlot left "Density"
+	Label/W=angleHPlot bottom "Cell turning"
+		AppendLayoutObject /W=summaryLayout graph angleHPlot
+	
+	// average the speed data from all conditions	
+	Make/O/N=(cond) sum_MeanSpeed, sum_SemSpeed, sum_NSpeed
+	Make/O/N=(cond) sum_MeanIV, sum_SemIV
+	String wList, newName, wName, condName, pref, datafolderName
+	Variable nTracks, last, i, j
+	
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		pref = condName + "_"
+		dataFolderName = "root:data:" + condName
+		SetDataFolder $dataFolderName
+		wList = WaveList("cd_" + pref + "*", ";","")
+		nTracks = ItemsInList(wList)
+		newName = "sum_Speed_" + condName
+		Make/O/N=(nTracks) $newName
+		WAVE w0 = $newName
+		for(j = 0; j < nTracks; j += 1)
+			wName = StringFromList(j,wList)
+			Wave w1 = $wName
+			last = numpnts(w1) - 1	// finds last row (max cumulative distance)
+			w0[j] = w1[last]/(last*tStep)	// calculates speed
+		endfor
+		WaveStats/Q w0
+		sum_MeanSpeed[i] = V_avg
+		sum_SemSpeed[i] = V_sem
+		sum_NSpeed[i] = V_npnts
+	endfor
+	KillWindow/Z SpeedPlot
+	Display/N=SpeedPlot/HIDE=1 sum_MeanSpeed vs condWave
+	Label/W=SpeedPlot left "Speed (µm/min)"
+	SetAxis/W=SpeedPlot/A/N=1/E=1 left
+	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
+	ModifyGraph/W=SpeedPlot zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
+	ModifyGraph/W=SpeedPlot hbFill=2
+	AppendToGraph/R/W=SpeedPlot sum_MeanSpeed vs condWave
+	SetAxis/W=SpeedPlot/A/N=1/E=1 right
+	ModifyGraph/W=SpeedPlot hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
+	ModifyGraph/W=SpeedPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
+	ErrorBars/W=SpeedPlot sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
+		AppendLayoutObject /W=summaryLayout graph SpeedPlot
+	
+	// average instantaneous speed variances
+	for(i = 0; i < cond; i += 1) // loop through conditions, 0-based
+		condName = condwave[i]
+		pref = condName + "_"
+		dataFolderName = "root:data:" + condName
+		SetDataFolder $dataFolderName
+		wList = WaveList("iv_" + pref + "*", ";","")
+		nTracks = ItemsInList(wList)
+		newName = "sum_ivVar_" + ReplaceString("_",pref,"")
+		Make/O/N=(nTracks) $newName
+		WAVE w0 = $newName
+		for(j = 0; j < nTracks; j += 1)
+			wName = StringFromList(j,wList)
+			Wave w1 = $wName
+			w0[j] = variance(w1)	// calculate varance for each cell
+		endfor
+		WaveStats/Q w0
+		sum_MeanIV[i] = V_avg
+		sum_SemIV[i] = V_sem
+	endfor
+	KillWindow/Z IVCatPlot
+	Display/N=IVCatPlot/HIDE=1 sum_MeanIV vs condWave
+	Label/W=IVCatPlot left "Variance (µm/min)"
+	SetAxis/W=IVCatPlot/A/N=1/E=1 left
+	ErrorBars/W=IVCatPlot sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
+	ModifyGraph/W=IVCatPlot zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
+	ModifyGraph/W=IVCatPlot hbFill=2
+	AppendToGraph/R/W=IVCatPlot sum_MeanIV vs condWave
+	SetAxis/W=IVCatPlot/A/N=1/E=1 right
+	ModifyGraph/W=IVCatPlot hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
+	ModifyGraph/W=IVCatPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
+	ErrorBars/W=IVCatPlot sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
+		AppendLayoutObject /W=summaryLayout graph IVCatPlot
+	
+	SetDataFolder root:
+	// Tidy summary layout
+	DoWindow/F summaryLayout
+	// in case these are not captured as prefs
+	LayoutPageAction size(-1)=(595, 842), margins(-1)=(18, 18, 18, 18)
+	ModifyLayout units=0
+	ModifyLayout frame=0,trans=1
+	Execute /Q "Tile/A=(4,3)/O=1"
 End
 
 ///////////////////////////////////////////////////////////////////////
@@ -1272,7 +1314,115 @@ Function TidyCondSpecificLayouts()
 			TextBox/W=$layoutName/C/N=$boxName/F=0/A=RB/X=0.00/Y=0.00 condName
 		endfor
 		LayoutPageAction/W=$layoutName page=(1)
-		DoUpdate
+	endfor
+	DoUpdate
+End
+
+Function SaveAllReports()
+	DoUpdate
+	String layoutList = WinList("*layout", ";", "WIN:4")
+	Variable nLayouts = ItemsInList(layoutList)
+	if(nLayouts == 0)
+		Abort "No reports to save!"
+	endif
+	
+	NewPath/O/Q OutputPath
+	String layoutName,fileName
+	Variable pgMax = 2
+	Variable i,j
+	
+	for(i = 0; i < nLayouts; i += 1)
+		layoutName = StringFromList(i,layoutList)
+		pgMax = 2
+		// export graphs as PDF (EMF on Windows)
+		if(defined(WINDOWS) == 1)
+			if(CmpStr(layoutName, "summaryLayout") == 0)
+				pgMax = 1
+			endif
+			// save all pages in a loop
+			for(j = 1; j < pgMax +1 ; j += 1)
+				fileName = layoutName + num2str(j) + ".emf"
+				SavePICT/E=-2/P=OutputPath/WIN=$layoutName/W=(0,0,0,0)/PGR=(j,-1) as fileName
+			endfor
+		else
+			fileName = layoutName + ".pdf"
+			SavePICT/E=-2/P=OutputPath/WIN=$layoutName/W=(0,0,0,0)/PGR=(1,-1) as fileName
+		endif
+	endfor
+End
+
+Function RecolorAllPlots()
+	SetDataFolder root:
+	WAVE/Z colorWave = root:colorWave
+	if(!WaveExists(colorWave))
+		Abort "3-column colorwave required"
+	endif
+	Duplicate/O colorWave, colorWave_BKP
+	// present dialog to work on recoloring
+	//
+	WAVE/T condWave = root:condWave
+	Variable cond = numpnts(condWave)
+
+	Variable i,j,k
+	
+	String plotList = "anglePlot;cdPlot;DAplot;dDplot;ivHist;ivPlot;MSDplot;quilt;sprkln;tkplot;"
+	// plots with 0.5 alpha
+	String halfList = "cdPlot;DAplot;dDplot;ivPlot;MSDplot;tkPlot;"
+	plotList = RemoveFromList(halfList, plotList)
+	Variable nPlots = ItemsInList(plotList)
+	String condName,plotName,traceList,traceName
+	Variable nTraces
+	
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		for(j = 0; j < nPlots; j += 1)
+			plotName = condName + "_" + StringFromList(j,plotList)
+			traceList = TraceNameList(plotName, ";", 1)
+			nTraces = ItemsInList(traceList)
+			for(k = 0; k < nTraces; k += 1)
+				traceName = StringFromList(k,traceList)
+				if(stringmatch(traceName,"W_*") == 0)
+					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2])
+				endif
+			endfor
+		endfor
+	endfor
+	
+	// now recolor traces with 0.5 alpha
+	plotList = halfList
+	nPlots = ItemsInList(plotList)
+	
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		for(j = 0; j < nPlots; j += 1)
+			plotName = condName + "_" + StringFromList(j,plotList)
+			traceList = TraceNameList(plotName, ";", 1)
+			nTraces = ItemsInList(traceList)
+			for(k = 0; k < nTraces; k += 1)
+				traceName = StringFromList(k,traceList)
+				if(stringmatch(traceName,"W_*") == 0)
+					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32767)
+				endif
+			endfor
+		endfor
+	endfor
+	
+	plotlist = "angleHPlot;cdPlot;DAPlot;dDplot;ivHPlot;ivPlot;MSDPlot;"
+	nPlots = ItemsInList(plotList)
+	
+	for(i = 0; i < nPlots; i += 1)
+		plotName = StringFromList(i,plotList)
+		traceList = TraceNameList(plotName, ";", 1)
+		nTraces = ItemsInList(traceList)
+		for(j = 0; j < nTraces; j += 1)
+			traceName = StringFromList(j,traceList)
+			for(k = 0; k < cond; k += 1)
+				condName = condWave[k]
+				if(stringmatch(traceName,"*"+condName+"*") == 1)
+					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[k][0],colorWave[k][1],colorWave[k][2])
+				endif
+			endfor
+		endfor
 	endfor
 End
 

@@ -7,14 +7,14 @@ Workflow
 --------
 
 1. Cells are tracked manually in ImageJ/FIJI using [Manual Tracking](http://rsbweb.nih.gov/ij/plugins/track/track.html).
-2. Save the outputs as csv, or copy-paste them into an Excel Workbook*.
+2. Save the outputs as csv, or copy-paste them into an Excel workbook*.
 3. Save a copy of `CellMigration.ipf` in *Wavemetrics/Igor Pro 7 User Files/User Procedures*. Open in Igor and compile.
 4. Run using Macros>Cell Migration...
 
 The dialog asks the user how many conditions are to be loaded and analysed. At this point, please confirm the time step and pixelsize of the movies.<br />
 Next, a panel pops up where the user specifies:
 
-1. the name of each condition
+1. The name of each condition
 2. Either the directory containing all the csvs from that condition *or* the Excel workbook containing the data
 3. OPTIONALLY, data containing offset information (if stage travel is an issue in the experiments). Again, either as a directory of CSVs or an Excel workbook.<br />
 
@@ -28,8 +28,9 @@ It will calculate and display the following:
 * Directionality ratio (d/D) over time
 * Mean squared displacement
 * Direction autocorrelation
+* Cell turning
 
-Reports are made for each condition and also a summary layout comparing all conditions.
+Reports are made for each condition and also a summary layout comparing all conditions. Select Macros>Save Reports to save all reports as PDF (Mac) or EMF (Windows).
 
 ### Excel formatting
 
@@ -45,7 +46,7 @@ NOTE: no headers in Excel file. Keep data to columns A-H, max of 2000 rows.
 * H - 7 - pixel value
 
 ### Colour palettes
-Colours are taken from Paul Tol SRON stylesheet. A maximum of 12 conditions are handled properly, with >12 conditions having non-unique colours.
+Colours are taken from Paul Tol SRON stylesheet. A maximum of 12 conditions are handled properly, with >12 conditions having non-unique colours. By editing the 3-column colorWave (root:colorWave) it is possible to recolor all the plots by subsequently clicking Macros > Recolor Everything.
 
 ### Compatability
 Written for IgorPro 7. From v 1.03 there is no back-compatability for IgorPro 6.37.
@@ -55,4 +56,4 @@ Written for IgorPro 7. From v 1.03 there is no back-compatability for IgorPro 6.
 
 \*  *Excel:* Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
 
-\*  *Offsetting:* For offsetting data, a workbook per condition is needed with corresponding sheets to the primary data. It is important that every frame has a tracked point.
+\*  *Offsetting:* For offsetting data, a directory of CSVs or workbook per condition is needed with corresponding files or sheets to the primary data. It is important that every frame has a tracked point.
