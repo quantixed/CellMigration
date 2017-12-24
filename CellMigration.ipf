@@ -86,17 +86,13 @@ Function Migrate()
 	
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
-		// add underscore if there isn't one
-		if(StringMatch(condName,"*_") == 0)
-			pref = condName + "_"
-		endif
 		
 		// make data folder for each condition
 		dataFolderName = "root:data:" + condName
 		NewDataFolder/O/S $dataFolderName
 		// run other procedures
-		moviemax1 = LoadMigration(pref,i)
-		moviemax2 = CorrectMigration(pref,i)
+		moviemax1 = LoadMigration(i)
+		moviemax2 = CorrectMigration(i)
 		if(moviemax1 != moviemax2)
 			if(moviemax2 == -1)
 				print "No correction applied to", condName
@@ -105,7 +101,7 @@ Function Migrate()
 			endif
 		endif
 		// for each condition go and make tracks and plot everything out
-		MakeTracks(pref,i)
+		MakeTracks(i)
 		SetDataFolder root:
 	endfor
 	
@@ -123,12 +119,12 @@ Function Migrate()
 End
 
 // This function will load the tracking data
-/// @param pref	prefix for condition i.e. "ctrl_" not "ctrl"
 /// @param	ii	variable containing row number from condWave
-Function LoadMigration(pref,ii)
-	String pref
+Function LoadMigration(ii)
 	Variable ii
 	
+	WAVE/T condWave = root:condWave
+	String condName = condWave[ii]
 	WAVE/T PathWave1 = root:PathWave1
 	String pathString = PathWave1[ii]
 	String sheet, prefix, matName, wList
@@ -154,8 +150,8 @@ Function LoadMigration(pref,ii)
 		
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i, fileList)
-		prefix = pref + "c_" + num2str(i)
-		matName = pref + num2str(i)
+		prefix = condName + "_c_" + num2str(i)
+		matName = condName + "_" + num2str(i)
 		if(csvOrNot == 0)
 			XLLoadWave/S=sheet/R=(A1,H2000)/O/K=0/N=$prefix/Q PathWave1[ii]
 		else
@@ -170,7 +166,7 @@ Function LoadMigration(pref,ii)
 		CheckDistancesAndSpeeds(matTrax)
 	endfor	
 		
-	Print "*** Condition", RemoveEnding(pref), "was loaded from", pathString
+	Print "*** Condition", condName, "was loaded from", pathString
 	
 	// return moviemax back to calling function for checking
 	return moviemax
@@ -200,12 +196,12 @@ Function CheckDistancesAndSpeeds(matTrax)
 End
 
 // This function will load the tracking data from an Excel Workbook
-///	@param	pref	prefix for excel workbook e.g. "ctrl_"
 ///	@param	ii	variable containing row number from condWave
-Function CorrectMigration(pref,ii)
-	String pref
+Function CorrectMigration(ii)
 	Variable ii
 	
+	WAVE/T condWave = root:condWave
+	String condName = condWave[ii]
 	WAVE/T PathWave2 = root:PathWave2
 	String pathString = PathWave2[ii]
 	Variable len = strlen(pathString)
@@ -249,12 +245,12 @@ Function CorrectMigration(pref,ii)
 		Concatenate/O/KILL wList, $matName
 		Wave matStat = $matName
 		// Find corresponding movie matrix
-		mName = ReplaceString("stat_",matname,pref)
+		mName = ReplaceString("stat_",matname,condName + "_")
 		Wave matTrax = $mName
 		OffsetAndRecalc(matStat,matTrax)
 	endfor
 	
-	Print "*** Offset data for ondition", RemoveEnding(pref), "was loaded from", pathString
+	Print "*** Offset data for ondition", condName, "was loaded from", pathString
 
 	// return moviemax back to calling function for checking
 	return moviemax
@@ -302,31 +298,30 @@ Function OffsetAndRecalc(matStat,matTrax)
 End
 
 // This function will make cumulative distance waves for each cell. They are called cd_*
-/// @param pref	prefix for excel workbook e.g. "ctrl_"
-/// @param tStep	timestep. Interval/frame rate of movie.
-/// @param pxSize	pixel size. xy scaling.
-Function MakeTracks(pref,ii)
-	String pref
+///	@param	ii	variable containing row number from condWave
+Function MakeTracks(ii)
 	Variable ii
 	
+	WAVE/T condWave = root:condWave
+	String condName = condWave[ii]
 	WAVE/Z paramWave = root:paramWave
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
 	WAVE/Z colorWave = root:colorWave
 	
-	String wList0 = WaveList(pref + "*",";","") // find all matrices
+	String wList0 = WaveList(condName + "_*",";","") // find all matrices
 	Variable nWaves = ItemsInList(wList0)
 	
 	Variable nTrack
 	String mName0, newName, plotName, avList, avName, errName
 	Variable i, j
 	
-	String layoutName = pref + "layout"
+	String layoutName = condName + "_layout"
 	KillWindow/Z $layoutName		// Kill the layout if it exists
 	NewLayout/HIDE=1/N=$layoutName	
 
 	// cumulative distance and plot over time	
-	plotName = pref + "cdplot"
+	plotName = condName + "_cdplot"
 	KillWindow/Z $plotName	// set up plot
 	Display/N=$plotName/HIDE=1
 
@@ -356,7 +351,7 @@ Function MakeTracks(pref,ii)
 	endfor
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("cd*",";","WIN:"+ plotName)
-	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_cd_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
@@ -368,7 +363,7 @@ Function MakeTracks(pref,ii)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// instantaneous speed over time	
-	plotName = pref + "ivplot"
+	plotName = condName + "_ivplot"
 	KillWindow/Z $plotName	// set up plot
 	Display/N=$plotName/HIDE=1
 
@@ -398,7 +393,7 @@ Function MakeTracks(pref,ii)
 	endfor
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("iv*",";","WIN:"+ plotName)
-	avName = "W_Ave_iv_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_iv_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
@@ -409,17 +404,17 @@ Function MakeTracks(pref,ii)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
 	// print a message to say how many valid tracks we have in this condition
-	Print ItemsInList(avList), "valid tracks plotted for", RemoveEnding(pref)
+	Print ItemsInList(avList), "valid tracks plotted for", condName
 	
-	plotName = pref + "ivHist"
+	plotName = condName + "_ivHist"
 	KillWindow/Z $plotName	//set up plot
 	Display/N=$plotName/HIDE=1
 	
 	Concatenate/O/NP avList, tempwave
-	newName = "h_" + pref + "ivHist"	// note that this makes a name like h_Ctrl_ivHist
+	newName = "h_iv_" + condName	// note that this makes a name like h_iv_Ctrl
 	Variable bval=ceil(wavemax(tempwave)/(sqrt((3*pxsize)^2)/tStep))
 	Make/O/N=(bval) $newName
-	Histogram/P/B={0,(sqrt((3*pxsize)^2)/tStep),bVal} tempwave,$newName
+	Histogram/B={0,(sqrt((3*pxsize)^2)/tStep),bVal} tempwave,$newName
 	AppendToGraph/W=$plotName $newName
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	ModifyGraph/W=$plotName mode=5,hbFill=4
@@ -432,7 +427,7 @@ Function MakeTracks(pref,ii)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// plot out tracks
-	plotName = pref + "tkplot"
+	plotName = condName + "_tkplot"
 	KillWindow/Z $plotName	//set up plot
 	Display/N=$plotName/HIDE=1
 	
@@ -482,13 +477,13 @@ Function MakeTracks(pref,ii)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// calculate d/D directionality ratio
-	plotName = pref + "dDplot"
+	plotName = condName + "_dDplot"
 	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
 	
 	String wName0, wName1
 	Variable len
-	wList0 = WaveList("tk_" + pref + "*", ";","")
+	wList0 = WaveList("tk_" + condName + "_*", ";","")
 	nWaves = ItemsInList(wList0)
 	
 	for(i = 0; i < nWaves; i += 1)
@@ -506,7 +501,7 @@ Function MakeTracks(pref,ii)
 	Endfor
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("dD*",";","WIN:"+ plotName)
-	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_dD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
@@ -518,11 +513,11 @@ Function MakeTracks(pref,ii)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// calculate MSD (overlapping method)
-	plotName = pref + "MSDplot"
+	plotName = condName + "_MSDplot"
 	KillWindow/Z $plotName	//setup plot
 	Display/N=$plotName/HIDE=1
 	
-	wList0 = WaveList("tk_" + pref + "*", ";","")
+	wList0 = WaveList("tk_" + condName + "_*", ";","")
 	nWaves = ItemsInList(wList0)
 	Variable k
 	
@@ -544,7 +539,7 @@ Function MakeTracks(pref,ii)
 	endfor
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("MSD*",";","WIN:"+ plotName)
-	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_MSD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
@@ -560,7 +555,7 @@ Function MakeTracks(pref,ii)
 	AppendLayoutObject /W=$layoutName graph $plotName
 	
 	// calculate direction autocorrelation
-	plotName = pref + "DAplot"
+	plotName = condName + "_DAplot"
 	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
 	
@@ -586,7 +581,7 @@ Function MakeTracks(pref,ii)
 	Killwaves/Z vWave
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
 	avList = Wavelist("DA*",";","WIN:"+ plotName)
-	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_DA_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
@@ -599,10 +594,10 @@ Function MakeTracks(pref,ii)
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
 	// calculate the angle distribution
-	plotName = pref + "anglePlot"
+	plotName = condName + "_anglePlot"
 	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
-	wList0 = WaveList(pref + "*",";","") // find all matrices
+	wList0 = WaveList(condName + "_*",";","") // find all matrices
 	nWaves = ItemsInList(wList0)
 	Concatenate/O/NP=0 wList0, allTempW // make long matrix of all tracks
 	Variable nSteps = dimsize(allTempW,0)
@@ -650,9 +645,9 @@ Function MakeTracks(pref,ii)
 	KillWaves/Z allTempW
 	// zapnans on AngleWave so I can count valid angles
 	WaveTransform zapnans AngleWave
-	newName = "h_" + pref + "angleHist"
-	Make/N=50/O $newName
-	Histogram/P/B={0,pi/50,50} angleWave,$newName
+	newName = "h_angle_" + condName
+	Make/N=41/O $newName
+	Histogram/B={0,pi/40,41} angleWave,$newName
 	AppendToGraph/W=$plotName $newName
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	ModifyGraph/W=$plotName mode=5, hbFill=4
@@ -667,44 +662,44 @@ Function MakeTracks(pref,ii)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
 	// print message about number of angles
-	Print numpnts(AngleWave), "valid angles found from all tracks for", RemoveEnding(pref)
+	Print numpnts(AngleWave), "valid angles found from all tracks for", condName
 	
 	// Plot these averages to summary windows at the end
-	avName = "W_Ave_cd_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_cd_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=cdPlot $avName
 	ErrorBars/W=cdPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=cdPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
-	avName = "W_Ave_iv_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_iv_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=ivPlot $avName
 	ErrorBars/W=ivPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
-	newName = "h_" + pref + "ivHist"
+	newName = "h_iv_" + condName
 	AppendToGraph/W=ivHPlot $newName
 	ModifyGraph/W=ivHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
-	avName = "W_Ave_dD_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_dD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=dDPlot $avName
 	ErrorBars/W=dDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=dDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 			
-	avName = "W_Ave_MSD_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_MSD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=MSDPlot $avName
 	ErrorBars/W=MSDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=MSDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
-	avName = "W_Ave_DA_" + ReplaceString("_",pref,"")
+	avName = "W_Ave_DA_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=DAPlot $avName
 	ErrorBars/W=DAPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
-	newName = "h_" + pref + "angleHist"
+	newName = "h_angle_" + condName
 	AppendToGraph/W=angleHPlot $newName
 	ModifyGraph/W=angleHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 End
@@ -924,6 +919,7 @@ Function TidyUpSummaryLayout()
 		AppendLayoutObject /W=summaryLayout graph DAPlot
 	SetAxis/W=angleHPlot/A/N=1/E=1 left
 	SetAxis/W=angleHPlot bottom 0,pi
+	ModifyGraph/W=angleHPlot mode=6
 	Make/O/N=5 axisW = {0,pi/4,pi/2,3*pi/4,pi}
 	Make/O/N=5/T axisTW = {"0","\u00BD\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
 	ModifyGraph/W=angleHPlot userticks(bottom)={axisW,axisTW}	
@@ -980,7 +976,7 @@ Function TidyUpSummaryLayout()
 		SetDataFolder $dataFolderName
 		wList = WaveList("iv_" + pref + "*", ";","")
 		nTracks = ItemsInList(wList)
-		newName = "sum_ivVar_" + ReplaceString("_",pref,"")
+		newName = "sum_ivVar_" + condName
 		Make/O/N=(nTracks) $newName
 		WAVE w0 = $newName
 		for(j = 0; j < nTracks; j += 1)
@@ -1418,7 +1414,7 @@ Function RecolorAllPlots()
 			traceName = StringFromList(j,traceList)
 			for(k = 0; k < cond; k += 1)
 				condName = condWave[k]
-				if(stringmatch(traceName,"*"+condName+"*") == 1)
+				if(stringmatch(traceName,"*"+condName) == 1)
 					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[k][0],colorWave[k][1],colorWave[k][2])
 				endif
 			endfor
