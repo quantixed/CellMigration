@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.08		// version number of Migrate()
+#pragma version=1.09		// version number of Migrate()
 #include <Waves Average>
 
 // CellMigration will analyse 2D cell migration in IgorPro
@@ -105,8 +105,9 @@ Function Migrate()
 		SetDataFolder root:
 	endfor
 	
-	// make the image quilts and then sort out the layouts
-	MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
+	// make the image quilt, spakline and joint histogram and then sort out the layouts
+	Variable optDur = MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
+	MakeJointHistogram(optDur)
 	TidyCondSpecificLayouts()
 	
 	KillWindow/Z summaryLayout
@@ -328,13 +329,14 @@ Function MakeTracks(ii)
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
-		Duplicate/O/RMD=[][5,5] m0, tDistW	// distance
-		Duplicate/O/RMD=[][1,1] m0, tCellW	// cell number
+		Duplicate/O/RMD=[][5,5] m0, $"tDistW"	// distance
+		Duplicate/O/RMD=[][1,1] m0, $"tCellW"	// cell number
+		WAVE tDistW,tCellW
 		Redimension/N=-1 tDistW, tCellW // make 1D
 		nTrack = WaveMax(tCellW)	// find maximum track number
 		for(j = 1; j < (nTrack+1); j += 1)	// index is 1-based
 			newName = "cd_" + mName0 + "_" + num2str(j)
-			Duplicate/O tDistW $newName
+			Duplicate/O tDistW, $newName
 			WAVE w2 = $newName
 			w2 = (tCellW[p] == j) ? tDistW[p] : NaN
 			WaveTransform zapnans w2
@@ -370,13 +372,14 @@ Function MakeTracks(ii)
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
-		Duplicate/O/RMD=[][5,5] m0, tDistW	// distance
-		Duplicate/O/RMD=[][1,1] m0, tCellW	// cell number
+		Duplicate/O/RMD=[][5,5] m0, $"tDistW"	// distance
+		Duplicate/O/RMD=[][1,1] m0, $"tCellW"	// cell number
+		WAVE tDistW,tCellW
 		Redimension/N=-1 tDistW, tCellW // make 1D
 		nTrack = WaveMax(tCellW)	// find maximum track number
 		for(j = 1; j < (nTrack+1); j += 1)	// index is 1-based
 			newName = "iv_" + mName0 + "_" + num2str(j)
-			Duplicate/O tDistW $newName
+			Duplicate/O tDistW, $newName
 			WAVE w2 = $newName
 			w2 = (tCellW[p] == j) ? tDistW[p] : NaN
 			WaveTransform zapnans w2
@@ -436,14 +439,16 @@ Function MakeTracks(ii)
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
-		Duplicate/O/RMD=[][3,3] m0, tXW	//x pos
-		Duplicate/O/RMD=[][4,4] m0, tYW	//y pos
-		Duplicate/O/RMD=[][1,1] m0, tCellW	//track number
+		Duplicate/O/RMD=[][3,3] m0, $"tXW"	//x pos
+		Duplicate/O/RMD=[][4,4] m0, $"tYW"	//y pos
+		Duplicate/O/RMD=[][1,1] m0, $"tCellW"	//track number
+		WAVE tXW,tYW,tCellW
 		Redimension/N=-1 tXW,tYW,tCellW		
 		nTrack = WaveMax(tCellW)	//find maximum track number
 		for(j = 1; j < (nTrack+1); j += 1)	//index is 1-based
 			newName = "tk_" + mName0 + "_" + num2str(j)
-			Duplicate/O tXW, w3	// tried to keep wn as references, but these are very local
+			Duplicate/O tXW, $"w3"
+			WAVE w3
 			w3 = (tCellW[p] == j) ? w3[p] : NaN
 			WaveTransform zapnans w3
 			if(numpnts(w3) <= (ceil(60/tstep)))
@@ -453,7 +458,8 @@ Function MakeTracks(ii)
 				w3 -= off	//set to origin
 				w3 *= pxSize
 				// do the y wave
-				Duplicate/O tYW, w4
+				Duplicate/O tYW, $"w4"
+				WAVE w4
 				w4 = (tCellW[p] == j) ? w4[p] : NaN
 				WaveTransform zapnans w4
 				off = w4[0]
@@ -704,9 +710,8 @@ Function MakeTracks(ii)
 	ModifyGraph/W=angleHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 End
 
-// This function will make ImageQuilts of 2D tracks
+// This function will make ImageQuilts and sparklines of 2D tracks for all conditions
 /// @param qSize	Variable to indicate desired size of image quilt (qSize^2 tracks)
-/// @param idealLength	Variable to indicate desired duration of tracks in minutes
 Function MakeImageQuilt(qSize)
 	Variable qSize
 	
@@ -746,7 +751,7 @@ Function MakeImageQuilt(qSize)
 	Variable optDur = (V_max / V_maxRowLoc^2) - 1 // because 0-based
 	Print qSize, "x", qSize, "quilt requested.", optQSize, "x", optQSize, "quilt with", optDur, "frames shown (", optDur * tStep, "min)."
 	
-	String plotName
+	String plotName,sampleWName
 	Variable startVar,endVar,xShift,yShift
 	Variable spaceVar = 100 // this might need changing
 	Variable j,k
@@ -765,7 +770,9 @@ Function MakeImageQuilt(qSize)
 		WaveTransform zapnans segValid
 		StatsSample/N=(optQSize^2) segValid
 		WAVE/Z W_Sampled
-		Duplicate/O W_Sampled, segSelected
+		sampleWName = "segSelected_" + condName
+		Duplicate/O W_Sampled, $sampleWName
+		Wave segSelected = $sampleWName
 		Make/O/N=(optQSize^2)/T segNames
 		Make/O/N=(optQSize^2) segLengths
 		for(j = 0; j < optQSize^2; j += 1)
@@ -846,6 +853,7 @@ Function MakeImageQuilt(qSize)
 		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=291,width($plotName)=488,height($plotName)=120
 	endfor
 	SetDataFolder root:
+	return optDur
 End
 
 Function FindSolution()
@@ -873,6 +881,126 @@ Function FindSolution()
 	solutionMat[][] = (trackDurations[q] > p * tStep) ? 1 : 0
 	MatrixOp/O solutionWave = sumRows(solutionMat)
 	return mostFrames
+End
+
+// This function will make Joint Histograms of 2D tracks for all conditions
+// It uses the segValid calculation from MakeImageQuilts to find the correct tracks to plot out
+Function MakeJointHistogram(optDur)
+	Variable optDur
+	
+	WAVE/T condWave = root:condWave
+	Variable cond = numpnts(condWave)
+	Wave paramWave = root:paramWave
+	Variable tStep = paramWave[1]
+	Wave colorWave = root:colorWave
+	String condName, dataFolderName, wName, plotName
+	Variable leastValid = 1000
+	
+	Variable i,j
+	
+	// find lowest number of valid tracks in all conditions
+	// Valid tracks are tracks with a length that could be plotted in the quilt
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		dataFolderName = "root:data:" + condName
+		SetDataFolder datafolderName
+		WAVE segValid
+		leastValid = min(leastValid,numpnts(segValid))
+	endfor
+	
+	String sampleWName
+	Variable startVar,endVar
+	Variable furthestPoint
+	// now concatenate leastValid number of tracks from each condition
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		dataFolderName = "root:data:" + condName
+		SetDataFolder datafolderName
+		WAVE/T trackNames
+		WAVE segValid
+		// take a random sample of leastValid number of tracks from each condition
+		StatsSample/N=(leastValid) segValid
+		WAVE/Z W_Sampled
+		sampleWName = "segJHSelected_" + condName
+		Duplicate/O W_Sampled, $sampleWName
+		Wave segJHSelected = $sampleWName
+		Make/O/N=(leastValid)/T segJHNames
+		Make/O/N=(leastValid*optDur,2) bigTk
+		for(j = 0; j < leastValid; j += 1)
+			wName = trackNames[segJHSelected[j]]
+			segJHNames[j] = wName
+			Wave tkW0 = $wName
+			startVar = j * optDur
+			endVar = startVar + optDur - 1
+			bigTk[startVar,endVar][] = tkW0[p-startVar][q]
+		endfor		
+		// find the furthest point in x or y in either direction for all conditions
+		furthestPoint = max(furthestPoint,wavemax(bigTk),abs(wavemin(bigTk)))
+		KillWaves/Z W_Sampled
+	endfor
+	
+	// set up the color table and bin waves for joint histograms
+	SetDataFolder root:
+	LoadNiceCTableW()
+	Variable binSize = 5
+	Variable leftTop = (25 * (ceil(furthestPoint / 25) + 1)) + (binSize / 2)
+	Variable nBins = (25 * (((ceil(furthestPoint / 25) + 1) * 2)) / binSize) + 2
+	Make/O/N=(nBins)/FREE theBinsWave = (p * binSize) - leftTop
+	Variable highestPoint = 0
+	
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		dataFolderName = "root:data:" + condName
+		SetDataFolder datafolderName
+		WAVE bigTk
+		Rotator(bigTk)
+		WAVE/Z xData, yData
+		JointHistogram/XBWV=theBinsWave/YBWV=theBinsWave xData,yData
+		plotName = condName + "_JHplot"
+		WAVE/Z M_JointHistogram
+		KillWindow/Z $plotName
+		NewImage/N=$plotName/HIDE=1 M_JointHistogram
+		ModifyImage/W=$plotName M_JointHistogram ctab= {1,*,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
+		ModifyGraph/W=$plotName width={Aspect,1}
+		// scale the image
+		SetScale/P x -leftTop,binSize,"", M_JointHistogram
+		SetScale/P y -leftTop,binSize,"", M_JointHistogram
+		String layoutName = condName + "_layout"
+		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=291,top($plotName)=21,width($plotName)=261,height($plotName)=261
+		highestPoint = max(highestPoint,WaveMax(M_JointHistogram))
+		KillWaves/Z xData,yData
+	endfor
+	// convert highest point to ceil log10 value
+	highestPoint = ceil(log(highestpoint))
+	// now go back around a scale the joint histograms to the same max and add colorscale
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
+		dataFolderName = "root:data:" + condName
+		SetDataFolder datafolderName
+		plotName = condName + "_JHplot"
+		WAVE/Z M_JointHistogram
+		ModifyImage/W=$plotName M_JointHistogram ctab= {1,10^highestPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
+		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=M_JointHistogram,log=1,tickLen=2.00
+		ModifyGraph/W=$plotName gfSize=8
+	endfor
+	SetDataFolder root:
+End
+
+Function rotator(m0)
+	Wave m0
+	// make rotation matrix to do a 90¡ CCW rotation
+	Make/O/N=(2,2)/FREE rotMat={{0,-1},{1,0}}
+	MatrixMultiply m0, rotMat
+	WAVE/Z M_Product
+	Concatenate/O/NP=0 {m0,M_Product}, m090
+	// now make rotation matric for 180¡ rotation
+	rotMat={{-1,0},{0,-1}}
+	MatrixMultiply m090, rotMat
+	Concatenate/O/NP=0 {m090,M_Product}, rBigTK
+	Duplicate/O/RMD=[][0] rbigTk,xData
+	Duplicate/O/RMD=[][1] rbigTk,yData
+	KillWaves/Z m0,m090,M_Product,rbigTk
 End
 
 // Function to sort out the summary layout
@@ -1014,6 +1142,7 @@ End
 
 ///////////////////////////////////////////////////////////////////////
 // BACKGROUND FUNCTIONS
+// MENU and DIALOG FUNCTIONS
 ///	@param	cond	number of conditions - determines size of box
 Function myIO_Panel(cond)
 	Variable cond
@@ -1169,13 +1298,14 @@ End
 ///////////////////////////////////////////////////////////////////////
 // UTILITY FUNCTIONS
 // Colours are taken from Paul Tol SRON stylesheet
+// Colours updated. Brighter palette for up to 6 colours, then palette of 12 for > 6
 // Define colours
 StrConstant SRON_1 = "0x4477aa;"
-StrConstant SRON_2 = "0x4477aa; 0xcc6677;"
-StrConstant SRON_3 = "0x4477aa; 0xddcc77; 0xcc6677;"
-StrConstant SRON_4 = "0x4477aa; 0x117733; 0xddcc77; 0xcc6677;"
-StrConstant SRON_5 = "0x332288; 0x88ccee; 0x117733; 0xddcc77; 0xcc6677;"
-StrConstant SRON_6 = "0x332288; 0x88ccee; 0x117733; 0xddcc77; 0xcc6677; 0xaa4499;"
+StrConstant SRON_2 = "0x4477aa; 0xee6677;"
+StrConstant SRON_3 = "0x4477aa; 0xccbb44; 0xee6677;"
+StrConstant SRON_4 = "0x4477aa; 0x228833; 0xccbb44; 0xee6677;"
+StrConstant SRON_5 = "0x4477aa; 0x66ccee; 0x228833; 0xccbb44; 0xee6677;"
+StrConstant SRON_6 = "0x4477aa; 0x66ccee; 0x228833; 0xccbb44; 0xee6677; 0xaa3377;"
 StrConstant SRON_7 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0xddcc77; 0xcc6677; 0xaa4499;"
 StrConstant SRON_8 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0xcc6677; 0xaa4499;"
 StrConstant SRON_9 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0xcc6677; 0x882255; 0xaa4499;"
@@ -1241,27 +1371,17 @@ Function MakeColorWave(cond)
 		pal = SRON_12
 	endif
 	
-	Variable color,vR,vG,vB
+	Variable color
 	Make/O/N=(cond,3) root:colorwave
 	WAVE colorWave = root:colorWave
 	Variable i
 	
 	for(i = 0; i < cond; i += 1)
 		// specify colours
-		if(cond <= 12)
-			color = str2num(StringFromList(i,pal))
-			vR = hexcolor_red(color)
-			vG = hexcolor_green(color)
-			vB = hexcolor_blue(color)
-		else
-			color = str2num(StringFromList(round((i/cond) * 12),pal))
-			vR = hexcolor_red(color)
-			vG = hexcolor_green(color)
-			vB = hexcolor_blue(color)
-		endif
-		colorwave[i][0] = vR
-		colorwave[i][1] = vG
-		colorwave[i][2] = vB
+		color = str2num(StringFromList(mod(i, 12),pal))
+		colorwave[i][0] = hexcolor_red(color)
+		colorwave[i][1] = hexcolor_green(color)
+		colorwave[i][2] = hexcolor_blue(color)
 	endfor
 End
 
@@ -1285,6 +1405,18 @@ STATIC Function CleanSlate()
 		name = GetIndexedObjNameDFR(dfr, 4, i)
 		KillDataFolder $name		
 	endfor
+End
+
+STATIC Function LoadNiceCTableW()
+	NewDataFolder/O root:Packages
+	NewDataFolder/O root:Packages:ColorTables
+	String/G root:Packages:ColorTables:oldDF = GetDataFolder(1)
+	NewDataFolder/O/S root:Packages:ColorTables:Moreland
+	LoadWave/H/O/P=Igor ":Color Tables:Moreland:SmoothCoolWarm256.ibw"
+	KillStrings/Z/A
+	SetDataFolder root:
+	KillStrings/Z root:Packages:ColorTables:oldDF
+	KillVariables/Z root:Packages:ColorTables:Moreland:V_flag
 End
 
 Function TidyCondSpecificLayouts()
