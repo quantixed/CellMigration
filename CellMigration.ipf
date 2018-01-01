@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.09		// version number of Migrate()
+#pragma version=1.10		// version number of Migrate()
 #include <Waves Average>
 
 // CellMigration will analyse 2D cell migration in IgorPro
@@ -30,7 +30,8 @@
 Menu "Macros"
 	"Cell Migration...", /Q, SetUpMigration()
 	"Save Reports...", /Q, SaveAllReports()
-	"Recolor Everything...", /Q, RecolorAllPlots()
+	"Recolor Everything", /Q, RecolorAllPlots()
+	"Rerun Analysis", /Q, RerunAnalysis()
 End
 
 Function SetUpMigration()
@@ -980,7 +981,7 @@ Function MakeJointHistogram(optDur)
 		SetDataFolder datafolderName
 		plotName = condName + "_JHplot"
 		WAVE/Z M_JointHistogram
-		ModifyImage/W=$plotName M_JointHistogram ctab= {1,10^highestPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
+		ModifyImage/W=$plotName M_JointHistogram ctab= {1,10^highestPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,0},log=1,minRGB=NaN,maxRGB=0
 		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=M_JointHistogram,log=1,tickLen=2.00
 		ModifyGraph/W=$plotName gfSize=8
 	endfor
@@ -1056,79 +1057,82 @@ Function TidyUpSummaryLayout()
 		AppendLayoutObject /W=summaryLayout graph angleHPlot
 	
 	// average the speed data from all conditions	
-	Make/O/N=(cond) sum_MeanSpeed, sum_SemSpeed, sum_NSpeed
-	Make/O/N=(cond) sum_MeanIV, sum_SemIV
-	String wList, newName, wName, condName, pref, datafolderName
+	KillWindow/Z SpeedPlot
+	Display/N=SpeedPlot/HIDE=1
+	Make/O/N=(cond) sum_MeanSpeed, sum_SDSpeed, sum_xLoc = p
+	String wList, newName, wName, condName, pref, datafolderName,xPosName
 	Variable nTracks, last, i, j
 	
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
-		pref = condName + "_"
 		dataFolderName = "root:data:" + condName
 		SetDataFolder $dataFolderName
-		wList = WaveList("cd_" + pref + "*", ";","")
+		wList = WaveList("cd_" + condName + "_*", ";","")
 		nTracks = ItemsInList(wList)
 		newName = "sum_Speed_" + condName
 		Make/O/N=(nTracks) $newName
 		WAVE w0 = $newName
+		xPosName = "x_sum_Speed_" + condName
+		Make/O/N=(nTracks) $xPosName = i + gnoise(0.1)
 		for(j = 0; j < nTracks; j += 1)
 			wName = StringFromList(j,wList)
 			Wave w1 = $wName
 			last = numpnts(w1) - 1	// finds last row (max cumulative distance)
 			w0[j] = w1[last]/(last*tStep)	// calculates speed
 		endfor
+		AppendToGraph/W=SpeedPlot w0 vs $xPosName
+		ModifyGraph/W=SpeedPlot rgb($newName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32767)
 		WaveStats/Q w0
 		sum_MeanSpeed[i] = V_avg
-		sum_SemSpeed[i] = V_sem
-		sum_NSpeed[i] = V_npnts
+		sum_SDSpeed[i] = V_sdev
 	endfor
-	KillWindow/Z SpeedPlot
-	Display/N=SpeedPlot/HIDE=1 sum_MeanSpeed vs condWave
+	AppendToGraph/W=SpeedPlot sum_MeanSpeed
+	ModifyGraph/W=SpeedPlot mode=3,marker=19
 	Label/W=SpeedPlot left "Speed (µm/min)"
 	SetAxis/W=SpeedPlot/A/N=1/E=1 left
-	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SemSpeed,sum_SemSpeed)
-	ModifyGraph/W=SpeedPlot zColor(sum_MeanSpeed)={colorwave,*,*,directRGB,0}
-	ModifyGraph/W=SpeedPlot hbFill=2
-	AppendToGraph/R/W=SpeedPlot sum_MeanSpeed vs condWave
-	SetAxis/W=SpeedPlot/A/N=1/E=1 right
-	ModifyGraph/W=SpeedPlot hbFill(sum_MeanSpeed#1)=0,rgb(sum_MeanSpeed#1)=(0,0,0)
-	ModifyGraph/W=SpeedPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
-	ErrorBars/W=SpeedPlot sum_MeanSpeed#1 Y,wave=(sum_SemSpeed,sum_SemSpeed)
+	SetAxis/W=SpeedPlot bottom -0.5, cond - 0.5
+	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SDSpeed,sum_SDSpeed)
+	ModifyGraph/W=SpeedPlot rgb(sum_MeanSpeed)=(0,0,0),msize(sum_MeanSpeed)=5
+	ModifyGraph/W=SpeedPlot userticks(bottom)={sum_xLoc,condWave}
 		AppendLayoutObject /W=summaryLayout graph SpeedPlot
+		
+	// do the strava calculation for all conditions and plot out	
+	KillWindow/Z StravaPlot
+	Display/N=StravaPlot/HIDE=1
+	Make/O/N=(cond) sum_MeanStrava, sum_SDStrava
+	Variable segmentLength = 25 // this is hardcoded but could become dialog controlled
 	
-	// average instantaneous speed variances
-	for(i = 0; i < cond; i += 1) // loop through conditions, 0-based
-		condName = condwave[i]
-		pref = condName + "_"
+	for(i = 0; i < cond; i += 1)
+		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
 		SetDataFolder $dataFolderName
-		wList = WaveList("iv_" + pref + "*", ";","")
+		wList = WaveList("cd_" + condName + "_*", ";","")
 		nTracks = ItemsInList(wList)
-		newName = "sum_ivVar_" + condName
+		newName = "sum_Strava_" + condName
 		Make/O/N=(nTracks) $newName
 		WAVE w0 = $newName
+		xPosName = "x_sum_Strava_" + condName
+		Make/O/N=(nTracks) $xPosName = i + gnoise(0.1)
 		for(j = 0; j < nTracks; j += 1)
 			wName = StringFromList(j,wList)
 			Wave w1 = $wName
-			w0[j] = variance(w1)	// calculate varance for each cell
+			w0[j] = StravaCalc(w1,segmentLength)
 		endfor
+		AppendToGraph/W=StravaPlot w0 vs $xPosName
+		ModifyGraph/W=StravaPlot rgb($newName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32767)
 		WaveStats/Q w0
-		sum_MeanIV[i] = V_avg
-		sum_SemIV[i] = V_sem
+		sum_MeanStrava[i] = V_avg
+		sum_SDStrava[i] = V_sdev
 	endfor
-	KillWindow/Z IVCatPlot
-	Display/N=IVCatPlot/HIDE=1 sum_MeanIV vs condWave
-	Label/W=IVCatPlot left "Variance (µm/min)"
-	SetAxis/W=IVCatPlot/A/N=1/E=1 left
-	ErrorBars/W=IVCatPlot sum_MeanIV Y,wave=(sum_SemIV,sum_SemIV)
-	ModifyGraph/W=IVCatPlot zColor(sum_MeanIV)={colorwave,*,*,directRGB,0}
-	ModifyGraph/W=IVCatPlot hbFill=2
-	AppendToGraph/R/W=IVCatPlot sum_MeanIV vs condWave
-	SetAxis/W=IVCatPlot/A/N=1/E=1 right
-	ModifyGraph/W=IVCatPlot hbFill(sum_MeanIV#1)=0,rgb(sum_MeanIV#1)=(0,0,0)
-	ModifyGraph/W=IVCatPlot noLabel(right)=2,axThick(right)=0,standoff(right)=0
-	ErrorBars/W=IVCatPlot sum_MeanIV#1 Y,wave=(sum_SemIV,sum_SemIV)
-		AppendLayoutObject /W=summaryLayout graph IVCatPlot
+	AppendToGraph/W=StravaPlot sum_MeanStrava
+	ModifyGraph/W=StravaPlot mode=3,marker=19
+	Label/W=StravaPlot left "Fastest "+ num2str(segmentLength) + " µm (min)"
+	SetAxis/W=StravaPlot/A/N=1/E=1 left
+	SetAxis/W=StravaPlot bottom -0.5, cond - 0.5
+	ErrorBars/W=StravaPlot sum_MeanStrava Y,wave=(sum_SDStrava,sum_SDStrava)
+	ModifyGraph/W=StravaPlot rgb(sum_MeanStrava)=(0,0,0),msize(sum_MeanStrava)=5
+	ModifyGraph/W=StravaPlot userticks(bottom)={sum_xLoc,condWave}
+		AppendLayoutObject /W=summaryLayout graph StravaPlot
 	
 	SetDataFolder root:
 	// Tidy summary layout
@@ -1138,6 +1142,32 @@ Function TidyUpSummaryLayout()
 	ModifyLayout units=0
 	ModifyLayout frame=0,trans=1
 	Execute /Q "Tile/A=(4,3)/O=1"
+End
+
+
+STATIC Function StravaCalc(w1,segmentLength)
+	Wave w1
+	Variable segmentLength
+	Variable nPnts = numpnts(w1)
+	Variable maxDist = w1[nPnts-1]
+	Variable returnVar = 1000
+	Variable i
+	
+	for(i = 0 ; i < nPnts; i += 1)
+		if(w1[i] + segmentLength > maxDist)
+			break
+		endif
+		FindLevel/Q/r=[i] w1, w1[i] + segmentLength
+		if(V_flag == 1)
+			break
+		endif
+		returnVar = min(returnVar,V_LevelX)
+	endfor
+	
+	if(returnVar == 1000)
+		returnVar = NaN
+	endif	
+	return returnVar
 End
 
 ///////////////////////////////////////////////////////////////////////
@@ -1301,17 +1331,17 @@ End
 // Colours updated. Brighter palette for up to 6 colours, then palette of 12 for > 6
 // Define colours
 StrConstant SRON_1 = "0x4477aa;"
-StrConstant SRON_2 = "0x4477aa; 0xee6677;"
-StrConstant SRON_3 = "0x4477aa; 0xccbb44; 0xee6677;"
-StrConstant SRON_4 = "0x4477aa; 0x228833; 0xccbb44; 0xee6677;"
-StrConstant SRON_5 = "0x4477aa; 0x66ccee; 0x228833; 0xccbb44; 0xee6677;"
-StrConstant SRON_6 = "0x4477aa; 0x66ccee; 0x228833; 0xccbb44; 0xee6677; 0xaa3377;"
-StrConstant SRON_7 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0xddcc77; 0xcc6677; 0xaa4499;"
-StrConstant SRON_8 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0xcc6677; 0xaa4499;"
-StrConstant SRON_9 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0xcc6677; 0x882255; 0xaa4499;"
-StrConstant SRON_10 = "0x332288; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0x882255; 0xaa4499;"
-StrConstant SRON_11 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0x882255; 0xaa4499;"
-StrConstant SRON_12 = "0x332288; 0x6699cc; 0x88ccee; 0x44aa99; 0x117733; 0x999933; 0xddcc77; 0x661100; 0xcc6677; 0xaa4466; 0x882255; 0xaa4499;"
+StrConstant SRON_2 = "0x4477aa;0xee6677;"
+StrConstant SRON_3 = "0x4477aa;0xccbb44;0xee6677;"
+StrConstant SRON_4 = "0x4477aa;0x228833;0xccbb44;0xee6677;"
+StrConstant SRON_5 = "0x4477aa;0x66ccee;0x228833;0xccbb44;0xee6677;"
+StrConstant SRON_6 = "0x4477aa;0x66ccee;0x228833;0xccbb44;0xee6677;0xaa3377;"
+StrConstant SRON_7 = "0x332288;0x88ccee;0x44aa99;0x117733;0xddcc77;0xcc6677;0xaa4499;"
+StrConstant SRON_8 = "0x332288;0x88ccee;0x44aa99;0x117733;0x999933;0xddcc77;0xcc6677;0xaa4499;"
+StrConstant SRON_9 = "0x332288;0x88ccee;0x44aa99;0x117733;0x999933;0xddcc77;0xcc6677;0x882255;0xaa4499;"
+StrConstant SRON_10 = "0x332288;0x88ccee;0x44aa99;0x117733;0x999933;0xddcc77;0x661100;0xcc6677;0x882255;0xaa4499;"
+StrConstant SRON_11 = "0x332288;0x6699cc;0x88ccee;0x44aa99;0x117733;0x999933;0xddcc77;0x661100;0xcc6677;0x882255;0xaa4499;"
+StrConstant SRON_12 = "0x332288;0x6699cc;0x88ccee;0x44aa99;0x117733;0x999933;0xddcc77;0x661100;0xcc6677;0xaa4466;0x882255;0xaa4499;"
 
 /// @param hex		variable in hexadecimal
 Function hexcolor_red(hex)
@@ -1552,6 +1582,32 @@ Function RecolorAllPlots()
 			endfor
 		endfor
 	endfor
+End
+
+Function RerunAnalysis()
+	String fullList = WinList("*", ";","WIN:7")
+	Variable allItems = ItemsInList(fullList)
+	String name
+	Variable i
+ 
+	for(i = 0; i < allItems; i += 1)
+		name = StringFromList(i, fullList)
+		KillWindow/Z $name		
+	endfor
+	
+	SetDataFolder root:data:
+	// Look for data folders only and kill them
+	DFREF dfr = GetDataFolderDFR()
+	allItems = CountObjectsDFR(dfr, 4)
+	for(i = 0; i < allItems; i += 1)
+		name = GetIndexedObjNameDFR(dfr, 4, i)
+		KillDataFolder $name		
+	endfor
+	WAVE/Z/T CondWave
+	if(!WaveExists(CondWave))
+		Abort "Something is wrong. Cannot Rerun the analysis."
+	endif
+	Migrate()
 End
 
 // Function from aclight to retrieve #pragma version number
