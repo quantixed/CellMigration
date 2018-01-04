@@ -27,11 +27,12 @@
 // H - 7 - pixel value
 
 // Menu item for easy execution
-Menu "Macros"
+Menu "CellMigr"
 	"Cell Migration...", /Q, SetUpMigration()
 	"Save Reports...", /Q, SaveAllReports()
 	"Recolor Everything", /Q, RecolorAllPlots()
 	"Rerun Analysis", /Q, RerunAnalysis()
+	"About CellMigration", /Q, AboutCellMigr()
 End
 
 Function SetUpMigration()
@@ -42,13 +43,23 @@ Function SetUpMigration()
 	Variable cond = 2
 	Variable tStep = 20
 	Variable pxSize = 0.22698
+	Variable dirVar = 0
+	Variable segmentLength = 25
+	String hstr = "A directed migration experiment is where a chemoattractant has been used.\r"
+	hstr += "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
 	
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
-	Prompt  pxSize, "Pixel size (µm)"
-	DoPrompt "Specify", cond, tStep, pxSize
+	Prompt pxSize, "Pixel size (\u03BCm)"
+	Prompt dirVar, "Directed migration experiment?", popup, "no;yes;"
+	Prompt segmentLength, "Segment length (\u03BCm)"
+	DoPrompt/HELP=hstr "Specify", cond, tStep, pxSize,dirVar,segmentLength
 	
-	Make/O/N=3 paramWave={cond,tStep,pxSize}
+	if (V_flag) 
+		return -1
+	endif
+	
+	Make/O/N=5 paramWave={cond,tStep,pxSize,dirVar,segmentLength}
 	MakeColorWave(cond)
 	myIO_Panel(cond)
 End
@@ -358,7 +369,7 @@ Function MakeTracks(ii)
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
-	Label/W=$plotName left "Cumulative distance (µm)"
+	Label/W=$plotName left "Cumulative distance (\u03BCm)"
 	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
@@ -401,7 +412,7 @@ Function MakeTracks(ii)
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
 	AppendToGraph/W=$plotName $avName
-	Label/W=$plotName left "Instantaneous Speed (µm/min)"
+	Label/W=$plotName left "Instantaneous Speed (\u03BCm/min)"
 	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
@@ -425,7 +436,7 @@ Function MakeTracks(ii)
 	SetAxis/W=$plotName/A/N=1/E=1 left
 	SetAxis/W=$plotName bottom 0,2
 	Label/W=$plotName left "Frequency"
-	Label/W=$plotName bottom "Instantaneous Speed (µm/min)"
+	Label/W=$plotName bottom "Instantaneous Speed (\u03BCm/min)"
 	KillWaves/Z tempwave
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
@@ -893,6 +904,7 @@ Function MakeJointHistogram(optDur)
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
+	Variable dirVar = paramWave[3]
 	Wave colorWave = root:colorWave
 	String condName, dataFolderName, wName, plotName
 	Variable leastValid = 1000
@@ -954,7 +966,7 @@ Function MakeJointHistogram(optDur)
 		dataFolderName = "root:data:" + condName
 		SetDataFolder datafolderName
 		WAVE bigTk
-		Rotator(bigTk)
+		Rotator(bigTk,dirVar)
 		WAVE/Z xData, yData
 		JointHistogram/XBWV=theBinsWave/YBWV=theBinsWave xData,yData
 		plotName = condName + "_JHplot"
@@ -963,6 +975,7 @@ Function MakeJointHistogram(optDur)
 		NewImage/N=$plotName/HIDE=1 M_JointHistogram
 		ModifyImage/W=$plotName M_JointHistogram ctab= {1,*,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
 		ModifyGraph/W=$plotName width={Aspect,1}
+		ModifyGraph axRGB=(34952,34952,34952),tlblRGB=(34952,34952,34952),alblRGB=(34952,34952,34952)
 		// scale the image
 		SetScale/P x -leftTop,binSize,"", M_JointHistogram
 		SetScale/P y -leftTop,binSize,"", M_JointHistogram
@@ -988,19 +1001,32 @@ Function MakeJointHistogram(optDur)
 	SetDataFolder root:
 End
 
-Function rotator(m0)
+/// @param	m0	matrix of xy coords for rotation
+/// @param	dirVar	variable specified right at the start, 0 means matrix is to be rotated.
+Function rotator(m0,dirVar)
 	Wave m0
-	// make rotation matrix to do a 90¡ CCW rotation
-	Make/O/N=(2,2)/FREE rotMat={{0,-1},{1,0}}
-	MatrixMultiply m0, rotMat
-	WAVE/Z M_Product
-	Concatenate/O/NP=0 {m0,M_Product}, m090
-	// now make rotation matric for 180¡ rotation
-	rotMat={{-1,0},{0,-1}}
-	MatrixMultiply m090, rotMat
-	Concatenate/O/NP=0 {m090,M_Product}, rBigTK
-	Duplicate/O/RMD=[][0] rbigTk,xData
-	Duplicate/O/RMD=[][1] rbigTk,yData
+	Variable dirVar
+	
+	switch(dirVar)
+		case 0:
+			// make rotation matrix to do a 90¡ CCW rotation
+			Make/O/N=(2,2)/FREE rotMat={{0,-1},{1,0}}
+			MatrixMultiply m0, rotMat
+			WAVE/Z M_Product
+			Concatenate/O/NP=0 {m0,M_Product}, m090
+			// now make rotation matric for 180¡ rotation
+			rotMat={{-1,0},{0,-1}}
+			MatrixMultiply m090, rotMat
+			Concatenate/O/NP=0 {m090,M_Product}, rBigTK
+			Duplicate/O/RMD=[][0] rbigTk,xData
+			Duplicate/O/RMD=[][1] rbigTk,yData
+			break
+		case 1:
+			// this is a directional migration experiment, no rotation needed
+			Duplicate/O/RMD=[][0] m0,xData
+			Duplicate/O/RMD=[][1] m0,yData
+			break
+	endswitch
 	KillWaves/Z m0,m090,M_Product,rbigTk
 End
 
@@ -1013,21 +1039,22 @@ Function TidyUpSummaryLayout()
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
+	Variable segmentLength = paramWave[4]
 	Wave colorWave = root:colorWave
 
 	// Tidy up summary windows
 	SetAxis/W=cdPlot/A/N=1 left
-	Label/W=cdPlot left "Cumulative distance (µm)"
+	Label/W=cdPlot left "Cumulative distance (\u03BCm)"
 	Label/W=cdPlot bottom "Time (min)"
 		AppendLayoutObject /W=summaryLayout graph cdPlot
 	SetAxis/W=ivPlot/A/N=1 left
-	Label/W=ivPlot left "Instantaneous Speed (µm/min)"
+	Label/W=ivPlot left "Instantaneous Speed (\u03BCm/min)"
 	Label/W=ivPlot bottom "Time (min)"
 		AppendLayoutObject /W=summaryLayout graph ivPlot
 	SetAxis/W=ivHPlot/A/N=1 left
 	SetAxis/W=ivHPlot bottom 0,2
 	Label/W=ivHPlot left "Frequency"
-	Label/W=ivHPlot bottom "Instantaneous Speed (µm/min)"
+	Label/W=ivHPlot bottom "Instantaneous Speed (\u03BCm/min)"
 	ModifyGraph/W=ivHPlot mode=6
 		AppendLayoutObject /W=summaryLayout graph ivHPlot
 	Label/W=dDPlot left "Directionality ratio (d/D)"
@@ -1087,12 +1114,12 @@ Function TidyUpSummaryLayout()
 		sum_SDSpeed[i] = V_sdev
 	endfor
 	AppendToGraph/W=SpeedPlot sum_MeanSpeed
-	ModifyGraph/W=SpeedPlot mode=3,marker=19
-	Label/W=SpeedPlot left "Speed (µm/min)"
+	ModifyGraph/W=SpeedPlot mode=3,marker=19,mrkThick=0
+	Label/W=SpeedPlot left "Average speed (\u03BCm/min)"
 	SetAxis/W=SpeedPlot/A/N=1/E=1 left
 	SetAxis/W=SpeedPlot bottom -0.5, cond - 0.5
 	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SDSpeed,sum_SDSpeed)
-	ModifyGraph/W=SpeedPlot rgb(sum_MeanSpeed)=(0,0,0),msize(sum_MeanSpeed)=5
+	ModifyGraph/W=SpeedPlot rgb(sum_MeanSpeed)=(0,0,0),msize(sum_MeanSpeed)=4
 	ModifyGraph/W=SpeedPlot userticks(bottom)={sum_xLoc,condWave}
 		AppendLayoutObject /W=summaryLayout graph SpeedPlot
 		
@@ -1100,7 +1127,6 @@ Function TidyUpSummaryLayout()
 	KillWindow/Z StravaPlot
 	Display/N=StravaPlot/HIDE=1
 	Make/O/N=(cond) sum_MeanStrava, sum_SDStrava
-	Variable segmentLength = 25 // this is hardcoded but could become dialog controlled
 	
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
@@ -1125,12 +1151,12 @@ Function TidyUpSummaryLayout()
 		sum_SDStrava[i] = V_sdev
 	endfor
 	AppendToGraph/W=StravaPlot sum_MeanStrava
-	ModifyGraph/W=StravaPlot mode=3,marker=19
-	Label/W=StravaPlot left "Fastest "+ num2str(segmentLength) + " µm (min)"
+	ModifyGraph/W=StravaPlot mode=3,marker=19,mrkThick=0
+	Label/W=StravaPlot left "Fastest "+ num2str(segmentLength) + " \u03BCm (min)"
 	SetAxis/W=StravaPlot/A/N=1/E=1 left
 	SetAxis/W=StravaPlot bottom -0.5, cond - 0.5
 	ErrorBars/W=StravaPlot sum_MeanStrava Y,wave=(sum_SDStrava,sum_SDStrava)
-	ModifyGraph/W=StravaPlot rgb(sum_MeanStrava)=(0,0,0),msize(sum_MeanStrava)=5
+	ModifyGraph/W=StravaPlot rgb(sum_MeanStrava)=(0,0,0),msize(sum_MeanStrava)=4
 	ModifyGraph/W=StravaPlot userticks(bottom)={sum_xLoc,condWave}
 		AppendLayoutObject /W=summaryLayout graph StravaPlot
 	
@@ -1585,6 +1611,7 @@ Function RecolorAllPlots()
 End
 
 Function RerunAnalysis()
+	SetDataFolder root:
 	String fullList = WinList("*", ";","WIN:7")
 	Variable allItems = ItemsInList(fullList)
 	String name
@@ -1595,19 +1622,25 @@ Function RerunAnalysis()
 		KillWindow/Z $name		
 	endfor
 	
-	SetDataFolder root:data:
-	// Look for data folders only and kill them
-	DFREF dfr = GetDataFolderDFR()
-	allItems = CountObjectsDFR(dfr, 4)
-	for(i = 0; i < allItems; i += 1)
-		name = GetIndexedObjNameDFR(dfr, 4, i)
-		KillDataFolder $name		
-	endfor
+//	SetDataFolder root:data:
+//	// Look for data folders only and kill them
+//	DFREF dfr = GetDataFolderDFR()
+//	allItems = CountObjectsDFR(dfr, 4)
+//	for(i = 0; i < allItems; i += 1)
+//		name = GetIndexedObjNameDFR(dfr, 4, i)
+//		KillDataFolder $name		
+//	endfor
+	KillDataFolder root:data:
 	WAVE/Z/T CondWave
 	if(!WaveExists(CondWave))
-		Abort "Something is wrong. Cannot Rerun the analysis."
+		Abort "Something is wrong. Cannot rerun the analysis."
 	endif
 	Migrate()
+End
+
+Function AboutCellMigr()
+	String vStr = "CellMigration\rVersion " + num2str(GetProcedureVersion("CellMigration.ipf"))
+	DoAlert 0, vStr
 End
 
 // Function from aclight to retrieve #pragma version number
