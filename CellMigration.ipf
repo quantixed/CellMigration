@@ -585,8 +585,8 @@ Function MakeTracks(ii)
 		wName0 = StringFromList(i,wList0)			// tk wave
 		WAVE w0 = $wName0
 		len = DimSize(w0,0)	// len is number of frames
-		Differentiate/METH=2/DIM=0/EP=1 w0 /D=vWave // make vector wave. nVectors is len-1
-		MatrixOp/O/FREE magWave = sqrt(sumrows(vWave * vWave))
+		Differentiate/METH=2/DIM=0/EP=1 w0 /D=vWave // make vector wave (vWave). nVectors is len-1
+		MatrixOp/O/FREE magWave = sqrt(sumrows(vWave * vWave)) // calculate magnitude of each vector
 		vWave[][] /= magWave[p]	// normalise vectors
 		newName = ReplaceString("tk",wName0,"DA")	// for results of DA per cell
 		Make/O/N=(len-2,len-2,2)/FREE tempDAMat0,tempDAMat1
@@ -594,9 +594,14 @@ Function MakeTracks(ii)
 		tempDAMat1[][][] = (p >= q) ? vWave[p+1][r] : 0
 		MatrixOp/O/FREE dotWave = (tempDAMat0 * tempDAMat1)
 		MatrixOp/O/FREE alphaWave = sumBeams(dotWave)
-		// Make average
-		Make/O/N=(len-2)/FREE countOfDAPnts = (len-2)-p
-		MatrixOp/O $newName = sumcols(alphaWave)^t / countOfDAPnts
+		// Make average. Previously we did this:
+//		Make/O/N=(len-2)/FREE countOfDAPnts = (len-2)-p
+//		MatrixOp/O $newName = sumcols(alphaWave)^t / countOfDAPnts
+		// Now we need to get rid of NaNs in the alphaWave and count the non-NaN points
+		MatrixOp/O/FREE alphaWave = replaceNans(alphaWave,0)
+		Make/O/FREE/N=(dimsize(alphaWave,0),dimsize(alphaWave,1)) countOfDAPnts
+		countOfDAPnts[][] = (abs(alphaWave[p][q]) > 0) ? 1 : 0
+		MatrixOp/O $newName = sumcols(alphaWave)^t / sumCols(countOfDAPnts)^t
 		SetScale/P x 0,tStep,"min", $newName
 		AppendtoGraph/W=$plotName $newName
 	endfor
