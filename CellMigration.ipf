@@ -43,7 +43,7 @@ Function SetUpMigration()
 	Variable cond = 2
 	Variable tStep = 20
 	Variable pxSize = 0.22698
-	Variable dirVar = 0
+	Variable dirVar = 1
 	Variable segmentLength = 25
 	String hstr = "A directed migration experiment is where a chemoattractant has been used.\r"
 	hstr += "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
@@ -77,6 +77,10 @@ Function Migrate()
 	Variable pxSize = paramWave[2]
 	WAVE/Z colorWave = root:colorWave
 	WAVE/T condWave = root:condWave
+	// because the user may have used illegal characters in condWave, we make a clean version
+	// for use in Igor and a copy called labelWave to use in plots and layouts
+	WAVE/T labelWave = CleanUpCondWave(condWave)
+	
 	
 	// make summary plot windows
 	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;angleHPlot"
@@ -263,7 +267,7 @@ Function CorrectMigration(ii)
 		OffsetAndRecalc(matStat,matTrax)
 	endfor
 	
-	Print "*** Offset data for ondition", condName, "was loaded from", pathString
+	Print "*** Offset data for condition", condName, "was loaded from", pathString
 
 	// return moviemax back to calling function for checking
 	return moviemax
@@ -1002,13 +1006,13 @@ Function MakeJointHistogram(optDur)
 End
 
 /// @param	m0	matrix of xy coords for rotation
-/// @param	dirVar	variable specified right at the start, 0 means matrix is to be rotated.
+/// @param	dirVar	variable specified right at the start, 1 means matrix is to be rotated, 2 = no rotation
 Function rotator(m0,dirVar)
 	Wave m0
 	Variable dirVar
 	
 	switch(dirVar)
-		case 0:
+		case 1:
 			// make rotation matrix to do a 90¡ CCW rotation
 			Make/O/N=(2,2)/FREE rotMat={{0,-1},{1,0}}
 			MatrixMultiply m0, rotMat
@@ -1021,7 +1025,7 @@ Function rotator(m0,dirVar)
 			Duplicate/O/RMD=[][0] rbigTk,xData
 			Duplicate/O/RMD=[][1] rbigTk,yData
 			break
-		case 1:
+		case 2:
 			// this is a directional migration experiment, no rotation needed
 			Duplicate/O/RMD=[][0] m0,xData
 			Duplicate/O/RMD=[][1] m0,yData
@@ -1041,6 +1045,7 @@ Function TidyUpSummaryLayout()
 	Variable tStep = paramWave[1]
 	Variable segmentLength = paramWave[4]
 	Wave colorWave = root:colorWave
+	WAVE/T labelWave = root:labelWave
 
 	// Tidy up summary windows
 	SetAxis/W=cdPlot/A/N=1 left
@@ -1120,7 +1125,7 @@ Function TidyUpSummaryLayout()
 	SetAxis/W=SpeedPlot bottom -0.5, cond - 0.5
 	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SDSpeed,sum_SDSpeed)
 	ModifyGraph/W=SpeedPlot rgb(sum_MeanSpeed)=(0,0,0),msize(sum_MeanSpeed)=4
-	ModifyGraph/W=SpeedPlot userticks(bottom)={sum_xLoc,condWave}
+	ModifyGraph/W=SpeedPlot userticks(bottom)={sum_xLoc,labelWave}
 		AppendLayoutObject /W=summaryLayout graph SpeedPlot
 		
 	// do the strava calculation for all conditions and plot out	
@@ -1157,7 +1162,7 @@ Function TidyUpSummaryLayout()
 	SetAxis/W=StravaPlot bottom -0.5, cond - 0.5
 	ErrorBars/W=StravaPlot sum_MeanStrava Y,wave=(sum_SDStrava,sum_SDStrava)
 	ModifyGraph/W=StravaPlot rgb(sum_MeanStrava)=(0,0,0),msize(sum_MeanStrava)=4
-	ModifyGraph/W=StravaPlot userticks(bottom)={sum_xLoc,condWave}
+	ModifyGraph/W=StravaPlot userticks(bottom)={sum_xLoc,labelWave}
 		AppendLayoutObject /W=summaryLayout graph StravaPlot
 	
 	SetDataFolder root:
@@ -1461,6 +1466,20 @@ STATIC Function CleanSlate()
 		name = GetIndexedObjNameDFR(dfr, 4, i)
 		KillDataFolder $name		
 	endfor
+End
+
+Function/WAVE CleanUpCondWave(condWave)
+	WAVE/T condWave
+	Duplicate/O condWave, root:labelWave
+	Variable nRows = numpnts(condWave)
+	String nameStr
+	Variable i
+	
+	for(i = 0; i < nRows; i += 1)
+		condWave[i] = CleanupName(condWave[i],0)
+	endfor
+	
+	return root:labelWave
 End
 
 STATIC Function LoadNiceCTableW()
