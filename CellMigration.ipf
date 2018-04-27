@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.10		// version number of Migrate()
+#pragma version=1.11		// version number of Migrate()
 #include <Waves Average>
 
 // CellMigration will analyse 2D cell migration in IgorPro
@@ -832,7 +832,7 @@ Function MakeImageQuilt(qSize)
 		String layoutName = condName + "_layout"
 		LayoutPageAction/W=$layoutName appendPage
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
-		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=21,width($plotName)=261,height($plotName)=261
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=291,width($plotName)=261,height($plotName)=261
 		// make sparkline graphic
 		plotName = condName + "_sprkln"
 		KillWindow/Z $plotName
@@ -871,7 +871,7 @@ Function MakeImageQuilt(qSize)
 		ModifyGraph/W=$plotName margin=14
 		// Append to appropriate layout (page 2)
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
-		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=291,width($plotName)=488,height($plotName)=120
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=558,width($plotName)=488,height($plotName)=120
 	endfor
 	SetDataFolder root:
 	return optDur
@@ -906,6 +906,8 @@ End
 
 // This function will make Joint Histograms of 2D tracks for all conditions
 // It uses the segValid calculation from MakeImageQuilts to find the correct tracks to plot out
+// Two JH are made. One of the segValid camples for optDur length in their original state
+// Second is a bootstrap of 50000 resamples of segValid tracks for optDur randomly oriented
 Function MakeJointHistogram(optDur)
 	Variable optDur
 	
@@ -932,14 +934,17 @@ Function MakeJointHistogram(optDur)
 	
 	String sampleWName
 	Variable startVar,endVar
-	Variable furthestPoint
+	Variable furthestPoint,theta
+	Variable boot = 50000
 	// now concatenate leastValid number of tracks from each condition
 	for(i = 0; i < cond; i += 1)
+		Make/O/N=(2,2)/FREE rotMat
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
 		SetDataFolder datafolderName
 		WAVE/T trackNames
 		WAVE segValid
+		
 		// take a random sample of leastValid number of tracks from each condition
 		StatsSample/N=(leastValid) segValid
 		WAVE/Z W_Sampled
@@ -955,10 +960,32 @@ Function MakeJointHistogram(optDur)
 			startVar = j * optDur
 			endVar = startVar + optDur - 1
 			bigTk[startVar,endVar][] = tkW0[p-startVar][q]
+		endfor
+		
+		// bootstrap leastValid number of tracks from each condition
+		StatsResample/N=(boot) segValid
+		WAVE/Z W_Resampled
+		sampleWName = "segBJHSelected_" + condName
+		Duplicate/O W_Resampled, $sampleWName
+		Wave segBJHSelected = $sampleWName
+		Make/O/N=(boot)/T segBJHNames
+		Make/O/N=(boot*optDur,2) bigBTk
+		for(j = 0; j < boot; j += 1)
+			wName = trackNames[segBJHSelected[j]]
+			segBJHNames[j] = wName
+			Wave tkW0 = $wName
+			startVar = j * optDur
+			endVar = startVar + optDur - 1
+			Duplicate/O/FREE tkW0,tempM0
+			theta = pi*enoise(1)
+			rotMat = {{cos(theta),-sin(theta)},{sin(theta),cos(theta)}}
+			MatrixMultiply tempM0, rotMat
+			WAVE/Z M_Product
+			bigBTk[startVar,endVar][] = M_Product[p-startVar][q]
 		endfor		
 		// find the furthest point in x or y in either direction for all conditions
-		furthestPoint = max(furthestPoint,wavemax(bigTk),abs(wavemin(bigTk)))
-		KillWaves/Z W_Sampled
+		furthestPoint = max(furthestPoint,wavemax(bigBTk),abs(wavemin(bigBTk)))
+		KillWaves/Z W_Sampled,W_Resampled
 	endfor
 	
 	// set up the color table and bin waves for joint histograms
@@ -968,75 +995,84 @@ Function MakeJointHistogram(optDur)
 	Variable leftTop = (25 * (ceil(furthestPoint / 25) + 1)) + (binSize / 2)
 	Variable nBins = (25 * (((ceil(furthestPoint / 25) + 1) * 2)) / binSize) + 2
 	Make/O/N=(nBins)/FREE theBinsWave = (p * binSize) - leftTop
-	Variable highestPoint = 0
+	Variable highestPoint = 0,highestBPoint = 0
+	String JHName,BJHName
 	
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
 		SetDataFolder datafolderName
+		// do first JH
 		WAVE bigTk
-		Rotator(bigTk,dirVar)
+		Duplicate/O/RMD=[][0] bigTk,xData
+		Duplicate/O/RMD=[][1] bigTk,yData
 		WAVE/Z xData, yData
 		JointHistogram/XBWV=theBinsWave/YBWV=theBinsWave xData,yData
 		plotName = condName + "_JHplot"
 		WAVE/Z M_JointHistogram
+		JHName = "segJHMat"
+		Duplicate/O M_JointHistogram, $JHName
 		KillWindow/Z $plotName
-		NewImage/N=$plotName/HIDE=1 M_JointHistogram
-		ModifyImage/W=$plotName M_JointHistogram ctab= {1,*,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
+		NewImage/N=$plotName/HIDE=1 $JHName
+		ModifyImage/W=$plotName $JHName ctab= {1,*,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
 		ModifyGraph/W=$plotName width={Aspect,1}
 		ModifyGraph axRGB=(34952,34952,34952),tlblRGB=(34952,34952,34952),alblRGB=(34952,34952,34952)
 		// scale the image
-		SetScale/P x -leftTop,binSize,"", M_JointHistogram
-		SetScale/P y -leftTop,binSize,"", M_JointHistogram
+		SetScale/P x -leftTop,binSize,"", $JHName
+		SetScale/P y -leftTop,binSize,"", $JHName
+		SetAxis/W=$plotName left -250,250
+		SetAxis/W=$plotName top -250,250
+		// find the max point in z of JHs
+		highestPoint = max(highestPoint,WaveMax($JHName))
+		// Append 1st JH to layout
 		String layoutName = condName + "_layout"
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=21,width($plotName)=261,height($plotName)=261
+		
+		// now do BJH
+		WAVE bigBTk
+		Duplicate/O/RMD=[][0] bigBTk,xData
+		Duplicate/O/RMD=[][1] bigBTk,yData
+		JointHistogram/XBWV=theBinsWave/YBWV=theBinsWave xData,yData
+		plotName = condName + "_BJHplot"
+		BJHName = "segBJHMat"
+		Duplicate/O M_JointHistogram, $BJHName
+		KillWindow/Z $plotName
+		NewImage/N=$plotName/HIDE=1 $BJHName
+		ModifyImage/W=$plotName $BJHName ctab= {1,*,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,1},log=1,minRGB=NaN,maxRGB=0
+		ModifyGraph/W=$plotName width={Aspect,1}
+		ModifyGraph axRGB=(34952,34952,34952),tlblRGB=(34952,34952,34952),alblRGB=(34952,34952,34952)
+		// scale the image
+		SetScale/P x -leftTop,binSize,"", $BJHName
+		SetScale/P y -leftTop,binSize,"", $BJHName
+		SetAxis/W=$plotName left -250,250
+		SetAxis/W=$plotName top -250,250
+		highestBPoint = max(highestBPoint,WaveMax($BJHName))
+		// now append the BJH
+		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
 		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=291,top($plotName)=21,width($plotName)=261,height($plotName)=261
-		highestPoint = max(highestPoint,WaveMax(M_JointHistogram))
-		KillWaves/Z xData,yData
+		
+		KillWaves/Z xData,yData, M_JointHistogram, bigTk,bigBTk
 	endfor
-	// convert highest point to ceil log10 value
-	highestPoint = ceil(log(highestpoint))
+	// convert highest points to ceil log10 value
+	highestPoint = ceil(log(highestPoint))
+	highestBPoint = ceil(log(highestBPoint))
 	// now go back around a scale the joint histograms to the same max and add colorscale
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
 		SetDataFolder datafolderName
 		plotName = condName + "_JHplot"
-		WAVE/Z M_JointHistogram
-		ModifyImage/W=$plotName M_JointHistogram ctab= {1,10^highestPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,0},log=1,minRGB=NaN,maxRGB=0
-		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=M_JointHistogram,log=1,tickLen=2.00
+		ModifyImage/W=$plotName $JHName ctab= {1,10^highestPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,0},log=1,minRGB=NaN,maxRGB=0
+		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=$JHName,log=1,tickLen=2.00
+		ModifyGraph/W=$plotName gfSize=8
+
+		plotName = condName + "_BJHplot"
+		ModifyImage/W=$plotName $BJHName ctab= {1,10^highestBPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,0},log=1,minRGB=NaN,maxRGB=0
+		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=$BJHName,log=1,tickLen=2.00
 		ModifyGraph/W=$plotName gfSize=8
 	endfor
 	SetDataFolder root:
-End
-
-/// @param	m0	matrix of xy coords for rotation
-/// @param	dirVar	variable specified right at the start, 1 means matrix is to be rotated, 2 = no rotation
-Function rotator(m0,dirVar)
-	Wave m0
-	Variable dirVar
-	
-	switch(dirVar)
-		case 1:
-			// make rotation matrix to do a 90¡ CCW rotation
-			Make/O/N=(2,2)/FREE rotMat={{0,-1},{1,0}}
-			MatrixMultiply m0, rotMat
-			WAVE/Z M_Product
-			Concatenate/O/NP=0 {m0,M_Product}, m090
-			// now make rotation matric for 180¡ rotation
-			rotMat={{-1,0},{0,-1}}
-			MatrixMultiply m090, rotMat
-			Concatenate/O/NP=0 {m090,M_Product}, rBigTK
-			Duplicate/O/RMD=[][0] rbigTk,xData
-			Duplicate/O/RMD=[][1] rbigTk,yData
-			break
-		case 2:
-			// this is a directional migration experiment, no rotation needed
-			Duplicate/O/RMD=[][0] m0,xData
-			Duplicate/O/RMD=[][1] m0,yData
-			break
-	endswitch
-	KillWaves/Z m0,m090,M_Product,rbigTk
 End
 
 // Function to sort out the summary layout
