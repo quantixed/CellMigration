@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.11		// version number of Migrate()
+#pragma version=1.12		// version number of Migrate()
 #include <Waves Average>
 
 // CellMigration will analyse 2D cell migration in IgorPro
@@ -43,7 +43,6 @@ Function SetUpMigration()
 	Variable cond = 2
 	Variable tStep = 20
 	Variable pxSize = 0.22698
-	Variable dirVar = 1
 	Variable segmentLength = 25
 	String hstr = "A directed migration experiment is where a chemoattractant has been used.\r"
 	hstr += "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
@@ -51,15 +50,14 @@ Function SetUpMigration()
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
 	Prompt pxSize, "Pixel size (\u03BCm)"
-	Prompt dirVar, "Directed migration experiment?", popup, "no;yes;"
 	Prompt segmentLength, "Segment length (\u03BCm)"
-	DoPrompt/HELP=hstr "Specify", cond, tStep, pxSize,dirVar,segmentLength
+	DoPrompt/HELP=hstr "Specify", cond, tStep, pxSize, segmentLength
 	
 	if (V_flag) 
 		return -1
 	endif
 	
-	Make/O/N=5 paramWave={cond,tStep,pxSize,dirVar,segmentLength}
+	Make/O/N=4 paramWave={cond,tStep,pxSize,segmentLength}
 	MakeColorWave(cond)
 	myIO_Panel(cond)
 End
@@ -120,7 +118,6 @@ Function Migrate()
 		MakeTracks(i)
 		SetDataFolder root:
 	endfor
-	
 	// make the image quilt, spakline and joint histogram and then sort out the layouts
 	Variable optDur = MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
 	MakeJointHistogram(optDur)
@@ -176,10 +173,13 @@ Function LoadMigration(ii)
 		endif
 		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
 		Concatenate/O/KILL wList, $matName
-		// check that distances and speeds are correct
+		// now we need to check that the matrix is OK
 		Wave matTrax = $matName
+		// check we have a valid matrix with 8 columns
+		CheckColumnsOfMatrix(matTrax)
 		// make sure 1st point is -1
 		matTrax[0][5,6] = -1
+		// check distances and speeds are correct
 		CheckDistancesAndSpeeds(matTrax)
 	endfor	
 		
@@ -189,9 +189,28 @@ Function LoadMigration(ii)
 	return moviemax
 End
 
+// This was added in v1.12 Dec 2018. At some point in the last year, the output
+// of Manual Tracking changed so that there was no longer a first (0) column containing
+// the row numbers. Add this column if that is the case.
+STATIC Function CheckColumnsOfMatrix(matTrax)
+	WAVE matTrax
+	Variable numCols = DimSize(matTrax,1)
+	if(numCols == 8)
+		return 1
+	elseif(numCols == 7)
+		// insert new 0th column
+		InsertPoints/M=1 0,1, MatTrax
+		MatTrax[][0] = p+1
+		return 0
+	else
+		Print NameOfWave(matTrax), "does not have 8 columns of data."
+		return -1
+	endif
+End
+
 // The purpose of this function is to work out whether the distances (and speeds) in the
 // original data are correct. Currently it just corrects them rather than testing and correcting if needed.
-Function CheckDistancesAndSpeeds(matTrax)
+STATIC Function CheckDistancesAndSpeeds(matTrax)
 	WAVE matTrax
 	
 	WAVE/Z paramWave = root:paramWave
@@ -204,7 +223,7 @@ Function CheckDistancesAndSpeeds(matTrax)
 	tempDist[][] = (matTrax[p][5] == -1) ? 0 : tempDist[p][q]
 	MatrixOp/O/FREE tempNorm = sqrt(sumRows(tempDist * tempDist))
 	tempNorm[] *= pxSize // convert to real distance
-	MatrixOp/O/FREE tempReal = sumcols(tempNorm - col(matTrax,5))
+//	MatrixOp/O/FREE tempReal = sumcols(tempNorm - col(matTrax,5)) // for checking
 	matTrax[][5] = (matTrax[p][5] == -1) ? -1 : tempNorm[p] // going to leave first point as -1
 	// correct speed column
 	matTrax[][6] = (matTrax[p][6] == -1) ? -1 : tempNorm[p] / tStep
@@ -329,7 +348,7 @@ Function MakeTracks(ii)
 	String wList0 = WaveList(condName + "_*",";","") // find all matrices
 	Variable nWaves = ItemsInList(wList0)
 	
-	Variable nTrack
+	Variable nTrack,nTrace=0
 	String mName0, newName, plotName, avList, avName, errName
 	Variable i, j
 	
@@ -361,22 +380,25 @@ Function MakeTracks(ii)
 			else
 				w2[0] = 0	// first point in distance trace is -1 so correct this
 				Integrate/METH=0 w2	// make cumulative distance
-				SetScale/P x 0,tStep,"min", w2
+				SetScale/P x 0,tStep, w2
 				AppendtoGraph/W=$plotName $newName
+				nTrace += 1
 			endif
 		endfor
 		KillWaves/Z tDistW
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	Variable alphaLevel = DecideOpacity(nTrace)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
 	avList = Wavelist("cd*",";","WIN:"+ plotName)
 	avName = "W_Ave_cd_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
-	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
+	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Cumulative distance (\u03BCm)"
 	Label/W=$plotName bottom "Time (min)"
-	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
+	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
+	SetAxis/W=$plotName/A/N=1 left
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
 	
@@ -404,22 +426,23 @@ Function MakeTracks(ii)
 			else
 				w2[0] = 0	// first point in distance trace is -1, so correct this
 				w2 /= tStep	// make instantaneous speed (units are µm/min)
-				SetScale/P x 0,tStep,"min", w2
+				SetScale/P x 0,tStep, w2
 				AppendtoGraph/W=$plotName $newName
 			endif
 		endfor
 		KillWaves/Z tDistW
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
 	avList = Wavelist("iv*",";","WIN:"+ plotName)
 	avName = "W_Ave_iv_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
-	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
+	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Instantaneous Speed (\u03BCm/min)"
 	Label/W=$plotName bottom "Time (min)"
-	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
+	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
+	SetAxis/W=$plotName/A/N=1 left
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
 	// print a message to say how many valid tracks we have in this condition
@@ -482,13 +505,14 @@ Function MakeTracks(ii)
 				w4 -= off
 				w4 *= pxSize
 				Concatenate/O/KILL {w3,w4}, $newName
-				WAVE w5 = $newName
+				Wave w5 = $newName
 				AppendtoGraph/W=$plotName w5[][1] vs w5[][0]
 			endif
 		endfor
 		Killwaves/Z tXW,tYW,tCellW //tidy up
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
+	// set these graph limits temporarily
 	SetAxis/W=$plotName left -250,250
 	SetAxis/W=$plotName bottom -250,250
 	ModifyGraph/W=$plotName width={Plan,1,bottom,left}
@@ -520,16 +544,16 @@ Function MakeTracks(ii)
 		w2[] = (w1[p] == 0) ? 1 : sqrt(w0[p][0]^2 + w0[p][1]^2) / w1[p]
 		w2[0] = NaN	// d/D at point 0 is not a number
 		AppendtoGraph/W=$plotName w2
-	Endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	endfor
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
 	avList = Wavelist("dD*",";","WIN:"+ plotName)
 	avName = "W_Ave_dD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
-	fWaveAverage(avList, "", 3, 1, AvName, ErrName)
+	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Directionality ratio (d/D)"
 	Label/W=$plotName bottom "Time (min)"
-	ErrorBars/W=$plotName $avName Y,wave=($ErrName,$ErrName)
+	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
@@ -556,10 +580,10 @@ Function MakeTracks(ii)
 		MatrixOp/O/FREE tempMat2 = (tempMat0 - tempMat1) * (tempMat0 - tempMat1))
 		Make/O/N=(len-1)/FREE countOfMSDPnts = (len-1)-p
 		MatrixOp/O $newName = sumcols(sumbeams(tempMat2))^t / countOfMSDPnts
-		SetScale/P x 0,tStep,"min", $newName
+		SetScale/P x 0,tStep, $newName
 		AppendtoGraph/W=$plotName $newName
 	endfor
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
 	avList = Wavelist("MSD*",";","WIN:"+ plotName)
 	avName = "W_Ave_MSD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
@@ -571,7 +595,7 @@ Function MakeTracks(ii)
 	SetAxis/W=$plotName bottom tStep,(len/2)
 	Label/W=$plotName left "MSD"
 	Label/W=$plotName bottom "Time (min)"
-	ErrorBars/W=$plotName $avName Y,wave=($errName,$errName)
+	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
 	AppendLayoutObject /W=$layoutName graph $plotName
@@ -602,11 +626,11 @@ Function MakeTracks(ii)
 		Make/O/FREE/N=(dimsize(alphaWave,0),dimsize(alphaWave,1)) countOfDAPnts
 		countOfDAPnts[][] = (abs(alphaWave[p][q]) > 0) ? 1 : 0
 		MatrixOp/O $newName = sumcols(alphaWave)^t / sumCols(countOfDAPnts)^t
-		SetScale/P x 0,tStep,"min", $newName
+		SetScale/P x 0,tStep, $newName
 		AppendtoGraph/W=$plotName $newName
 	endfor
 	Killwaves/Z vWave
-	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],32767)
+	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
 	avList = Wavelist("DA*",";","WIN:"+ plotName)
 	avName = "W_Ave_DA_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
@@ -615,7 +639,7 @@ Function MakeTracks(ii)
 	SetAxis/W=$plotName left -1,1
 	Label/W=$plotName left "Direction autocorrelation"
 	Label/W=$plotName bottom "Time (min)"
-	ErrorBars/W=$plotName $avName Y,wave=($errName,$errName)
+	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
@@ -695,13 +719,13 @@ Function MakeTracks(ii)
 	avName = "W_Ave_cd_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=cdPlot $avName
-	ErrorBars/W=cdPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
+	ErrorBars/W=cdPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=cdPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	avName = "W_Ave_iv_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=ivPlot $avName
-	ErrorBars/W=ivPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
+	ErrorBars/W=ivPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	newName = "h_iv_" + condName
@@ -711,24 +735,47 @@ Function MakeTracks(ii)
 	avName = "W_Ave_dD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=dDPlot $avName
-	ErrorBars/W=dDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
+	ErrorBars/W=dDPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=dDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 			
 	avName = "W_Ave_MSD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=MSDPlot $avName
-	ErrorBars/W=MSDPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
+	ErrorBars/W=MSDPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=MSDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	avName = "W_Ave_DA_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=DAPlot $avName
-	ErrorBars/W=DAPlot $avName SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
+	ErrorBars/W=DAPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	
 	newName = "h_angle_" + condName
 	AppendToGraph/W=angleHPlot $newName
 	ModifyGraph/W=angleHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
+End
+
+///	@param	plotString	String such as "*_tkPlot" to determine which plot get rescaled
+///	@param	limitVar	Variable containing the furthest point
+STATIC Function RescalePlotsToLimits(plotString,limitVar)
+	String plotString
+	Variable limitVar
+	// we set a temporary limit of -250,250 to all tkPlots
+	if(limitVar > 250)
+		limitVar = ceil(limitVar / 50) * 50
+		String plotList = WinList(plotString,";","WIN:1")
+		String plotName
+		Variable i
+		for(i = 0; i < ItemsInList(plotList); i += 1)
+			plotName = StringFromList(i,plotList)
+			SetAxis/W=$plotName left -limitVar,limitVar
+			SetAxis/W=$plotName/Z bottom -limitVar,limitVar
+			SetAxis/W=$plotName/Z top -limitVar,limitVar
+		endfor
+		return 1
+	else
+		return 0
+	endif
 End
 
 // This function will make ImageQuilts and sparklines of 2D tracks for all conditions
@@ -819,8 +866,8 @@ Function MakeImageQuilt(qSize)
 		endfor
 		// Add to plot and then format
 		AppendToGraph/W=$plotName quiltBigMat[][1] vs quiltBigMat[][0]
-		SetAxis/W=$plotName left (optQsize+0.5) * spaceVar,-1.5*spaceVar
-		SetAxis/W=$plotName bottom -1.5*spaceVar,(optQsize+0.5) * spaceVar
+		SetAxis/W=$plotName left (optQsize+1.5) * spaceVar,-2.5*spaceVar
+		SetAxis/W=$plotName bottom -2.5*spaceVar,(optQsize+1.5) * spaceVar
 		ModifyGraph/W=$plotName width={Aspect,1}
 		ModifyGraph/W=$plotName manTick={0,100,0,0},manMinor={0,0}
 		ModifyGraph/W=$plotName noLabel=2,mirror=1,standoff=0,tick=3
@@ -860,8 +907,8 @@ Function MakeImageQuilt(qSize)
 		KillWaves/Z M_product
 		// Add to plot and then format
 		AppendToGraph/W=$plotName sprklnBigMat[][1] vs sprklnBigMat[][0]
-		SetAxis/W=$plotName left 0.5 * spaceVar,-1.5*spaceVar
-		SetAxis/W=$plotName bottom -1.5*spaceVar,(optQsize+0.5) * spaceVar
+		SetAxis/W=$plotName left 0.75 * spaceVar,-2.5*spaceVar
+		SetAxis/W=$plotName bottom -0.5*spaceVar,(optQsize+0.5) * spaceVar
 		ModifyGraph/W=$plotName width={Plan,1,bottom,left}
 		ModifyGraph/W=$plotName manTick={0,100,0,0},manMinor={0,0}
 		ModifyGraph/W=$plotName noLabel=2,mirror=1,standoff=0,tick=3
@@ -869,9 +916,13 @@ Function MakeImageQuilt(qSize)
 		ModifyGraph axRGB=(65535,65535,65535)
 		ModifyGraph/W=$plotName rgb=(colorWave[i][0],colorWave[i][1],colorWave[i][2])
 		ModifyGraph/W=$plotName margin=14
+		SetDrawLayer/W=$plotName UserBack
+		SetDrawEnv/W=$plotName xcoord= prel,ycoord= left,linefgc= (21845,21845,21845),dash= 1
+		DrawLine/W=$plotName 0,0,1,0
+		SetDrawLayer/W=$plotName UserFront
 		// Append to appropriate layout (page 2)
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
-		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=558,width($plotName)=488,height($plotName)=120
+		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=558,width($plotName)=542,height($plotName)=180
 	endfor
 	SetDataFolder root:
 	return optDur
@@ -915,7 +966,6 @@ Function MakeJointHistogram(optDur)
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
-	Variable dirVar = paramWave[3]
 	Wave colorWave = root:colorWave
 	String condName, dataFolderName, wName, plotName
 	Variable leastValid = 1000
@@ -1064,14 +1114,18 @@ Function MakeJointHistogram(optDur)
 		SetDataFolder datafolderName
 		plotName = condName + "_JHplot"
 		ModifyImage/W=$plotName $JHName ctab= {1,10^highestPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,0},log=1,minRGB=NaN,maxRGB=0
-		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=$JHName,log=1,tickLen=2.00
+		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=1 vert=0,widthPct=50,heightPct=5,frame=0.00,image=$JHName,log=1,tickLen=2.00
 		ModifyGraph/W=$plotName gfSize=8
 
 		plotName = condName + "_BJHplot"
 		ModifyImage/W=$plotName $BJHName ctab= {1,10^highestBPoint,root:Packages:ColorTables:Moreland:SmoothCoolWarm256,0},log=1,minRGB=NaN,maxRGB=0
-		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=0.00 vert=0,widthPct=50,heightPct=5,frame=0.00,image=$BJHName,log=1,tickLen=2.00
+		ColorScale/W=$plotName/C/N=text0/F=0/B=1/A=RB/X=0.00/Y=1 vert=0,widthPct=50,heightPct=5,frame=0.00,image=$BJHName,log=1,tickLen=2.00
 		ModifyGraph/W=$plotName gfSize=8
 	endfor
+	// rescale tk, JH and BJH plots
+	RescalePlotsToLimits("*_tkplot",furthestPoint)
+	RescalePlotsToLimits("*_JHplot",furthestPoint)
+	RescalePlotsToLimits("*_BJHplot",furthestPoint)
 	SetDataFolder root:
 End
 
@@ -1084,7 +1138,7 @@ Function TidyUpSummaryLayout()
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
-	Variable segmentLength = paramWave[4]
+	Variable segmentLength = paramWave[3]
 	Wave colorWave = root:colorWave
 	WAVE/T labelWave = root:labelWave
 
@@ -1129,12 +1183,10 @@ Function TidyUpSummaryLayout()
 	Label/W=angleHPlot bottom "Cell turning"
 		AppendLayoutObject /W=summaryLayout graph angleHPlot
 	
-	// average the speed data from all conditions	
-	KillWindow/Z SpeedPlot
-	Display/N=SpeedPlot/HIDE=1
-	Make/O/N=(cond) sum_MeanSpeed, sum_SDSpeed, sum_xLoc = p
-	String wList, newName, wName, condName, pref, datafolderName,xPosName
-	Variable nTracks, last, i, j
+	// average the speed data and do strava calc from all conditions
+	String wList, speedName, stravaName, wName, condName, datafolderName
+	Variable nTracks, last, mostTracks
+	Variable i, j
 	
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
@@ -1142,69 +1194,52 @@ Function TidyUpSummaryLayout()
 		SetDataFolder $dataFolderName
 		wList = WaveList("cd_" + condName + "_*", ";","")
 		nTracks = ItemsInList(wList)
-		newName = "sum_Speed_" + condName
-		Make/O/N=(nTracks) $newName
-		WAVE w0 = $newName
-		xPosName = "x_sum_Speed_" + condName
-		Make/O/N=(nTracks) $xPosName = i + gnoise(0.1)
+		speedName = "sum_Speed_" + condName
+		stravaName = "sum_Strava_" + condName
+		Make/O/N=(nTracks) $speedName, $stravaName
+		Wave speedW = $speedName
+		Wave stravaW = $stravaName
 		for(j = 0; j < nTracks; j += 1)
 			wName = StringFromList(j,wList)
 			Wave w1 = $wName
 			last = numpnts(w1) - 1	// finds last row (max cumulative distance)
-			w0[j] = w1[last]/(last*tStep)	// calculates speed
+			speedW[j] = w1[last]/(last*tStep)	// calculates speed
+			stravaW[j] = StravaCalc(w1,segmentLength)
 		endfor
-		AppendToGraph/W=SpeedPlot w0 vs $xPosName
-		ModifyGraph/W=SpeedPlot rgb($newName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32767)
-		WaveStats/Q w0
-		sum_MeanSpeed[i] = V_avg
-		sum_SDSpeed[i] = V_sdev
+		mostTracks = max(mostTracks,nTracks)
 	endfor
-	AppendToGraph/W=SpeedPlot sum_MeanSpeed
-	ModifyGraph/W=SpeedPlot mode=3,marker=19,mrkThick=0
-	Label/W=SpeedPlot left "Average speed (\u03BCm/min)"
-	SetAxis/W=SpeedPlot/A/N=1/E=1 left
-	SetAxis/W=SpeedPlot bottom -0.5, cond - 0.5
-	ErrorBars/W=SpeedPlot sum_MeanSpeed Y,wave=(sum_SDSpeed,sum_SDSpeed)
-	ModifyGraph/W=SpeedPlot rgb(sum_MeanSpeed)=(0,0,0),msize(sum_MeanSpeed)=4
-	ModifyGraph/W=SpeedPlot userticks(bottom)={sum_xLoc,labelWave}
-		AppendLayoutObject /W=summaryLayout graph SpeedPlot
-		
-	// do the strava calculation for all conditions and plot out	
+	
+	KillWindow/Z SpeedPlot
+	Display/N=SpeedPlot/HIDE=1
 	KillWindow/Z StravaPlot
 	Display/N=StravaPlot/HIDE=1
-	Make/O/N=(cond) sum_MeanStrava, sum_SDStrava
-	
+	// now store the values in a blank matrix for category-style box/violinplots
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
 		SetDataFolder $dataFolderName
-		wList = WaveList("cd_" + condName + "_*", ";","")
-		nTracks = ItemsInList(wList)
-		newName = "sum_Strava_" + condName
-		Make/O/N=(nTracks) $newName
-		WAVE w0 = $newName
-		xPosName = "x_sum_Strava_" + condName
-		Make/O/N=(nTracks) $xPosName = i + gnoise(0.1)
-		for(j = 0; j < nTracks; j += 1)
-			wName = StringFromList(j,wList)
-			Wave w1 = $wName
-			w0[j] = StravaCalc(w1,segmentLength)
-		endfor
-		AppendToGraph/W=StravaPlot w0 vs $xPosName
-		ModifyGraph/W=StravaPlot rgb($newName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32767)
-		WaveStats/Q w0
-		sum_MeanStrava[i] = V_avg
-		sum_SDStrava[i] = V_sdev
+		speedName = "sum_Speed_" + condName
+		stravaName = "sum_Strava_" + condName
+		Wave speedW = $speedName
+		Wave stravaW = $stravaName
+		Make/O/N=(mostTracks,cond) $(ReplaceString("sum_S",speedName,"sum_MatS"))=NaN
+		Make/O/N=(mostTracks,cond) $(ReplaceString("sum_S",stravaName,"sum_MatS"))=NaN
+		Wave sum_MatSpeed = $(ReplaceString("sum_S",speedName,"sum_MatS"))
+		Wave sum_MatStrava = $(ReplaceString("sum_S",stravaName,"sum_MatS"))
+		sum_MatSpeed[0,numpnts(speedW)-1][i] = speedW[p]
+		sum_MatStrava[0,numpnts(stravaW)-1][i] = stravaW[p]
+		BuildBoxOrViolinPlot(sum_MatSpeed,"SpeedPlot",i)
+		BuildBoxOrViolinPlot(sum_MatStrava,"StravaPlot", i)
 	endfor
-	AppendToGraph/W=StravaPlot sum_MeanStrava
-	ModifyGraph/W=StravaPlot mode=3,marker=19,mrkThick=0
+	Label/W=SpeedPlot left "Average speed (\u03BCm/min)"
+	SetAxis/A/N=1/E=1/W=SpeedPlot left
+	ModifyGraph/W=SpeedPlot toMode=-1
 	Label/W=StravaPlot left "Fastest "+ num2str(segmentLength) + " \u03BCm (min)"
-	SetAxis/W=StravaPlot/A/N=1/E=1 left
-	SetAxis/W=StravaPlot bottom -0.5, cond - 0.5
-	ErrorBars/W=StravaPlot sum_MeanStrava Y,wave=(sum_SDStrava,sum_SDStrava)
-	ModifyGraph/W=StravaPlot rgb(sum_MeanStrava)=(0,0,0),msize(sum_MeanStrava)=4
-	ModifyGraph/W=StravaPlot userticks(bottom)={sum_xLoc,labelWave}
-		AppendLayoutObject /W=summaryLayout graph StravaPlot
+	SetAxis/A/N=1/E=1/W=StravaPlot left
+	ModifyGraph/W=StravaPlot toMode=-1
+	// add both new plots to summary layout
+	AppendLayoutObject /W=summaryLayout graph SpeedPlot
+	AppendLayoutObject /W=summaryLayout graph StravaPlot
 	
 	SetDataFolder root:
 	// Tidy summary layout
@@ -1681,15 +1716,7 @@ Function RerunAnalysis()
 		name = StringFromList(i, fullList)
 		KillWindow/Z $name		
 	endfor
-	
-//	SetDataFolder root:data:
-//	// Look for data folders only and kill them
-//	DFREF dfr = GetDataFolderDFR()
-//	allItems = CountObjectsDFR(dfr, 4)
-//	for(i = 0; i < allItems; i += 1)
-//		name = GetIndexedObjNameDFR(dfr, 4, i)
-//		KillDataFolder $name		
-//	endfor
+
 	KillDataFolder root:data:
 	WAVE/Z/T CondWave
 	if(!WaveExists(CondWave))
@@ -1726,4 +1753,53 @@ Function GetProcedureVersion(procedureWinTitleStr)
 		version = str2num(versionFoundStr)
 	endif
 	return version	
+End
+
+STATIC Function DecideOpacity(nTrace)
+	Variable nTrace
+	Variable alpha
+	if(nTrace < 10)
+		alpha = 1
+	elseif(nTrace < 50)
+		alpha = 0.5
+	elseif(nTrace < 100)
+		alpha = 0.3
+	else
+		alpha = 0.2
+	endif
+	alpha = round(65535 * alpha)
+	return alpha
+End
+
+// This function will make a "multicolumn" boxplot or violinplot (Igor >8 only) 
+///	@param	matA	matrix of points to be appended
+///	@param	plotName	string to tell igor which graph window to work on
+///	@param	ii	variable to indicate which condition (for coloring)
+STATIC Function BuildBoxOrViolinPlot(matA,plotName,ii)
+	WAVE matA
+	String plotName
+	Variable ii
+	
+	String wName = NameOfWave(matA)
+	Wave/T/Z condWave = root:condWave
+	Wave/Z colorWave = root:colorWave
+	//  This works because all matrices passed to this function have the same dimensions
+	Variable nTracks = DimSize(matA,0)
+	if(nTracks < 100)
+		AppendBoxPlot/W=$plotName matA vs condWave
+	else
+		AppendViolinPlot/W=$plotName matA vs condWave
+	endif
+	ModifyViolinPlot/W=$plotName trace=$wName,ShowMean,MeanMarker=19,CloseOutline
+	ModifyViolinPlot/W=$plotName trace=$wName,DataMarker=19
+	Variable alphaLevel = DecideOpacity(nTracks)
+	ModifyGraph/W=$plotName rgb($wName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
+End
+
+// not currently used
+///	@param	matA	2d wave of xy coords offset to origin
+STATIC Function DistanceFinder(matA)
+	Wave MatA
+	MatrixOp/O/FREE tempNorm = sqrt(sumRows(matA * matA))
+	return WaveMax(tempNorm)
 End
