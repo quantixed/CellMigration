@@ -1867,11 +1867,13 @@ STATIC Function BuildBoxOrViolinPlot(matA,plotName,ii)
 	Variable nTracks = DimSize(matA,0)
 	if(nTracks < 100)
 		AppendBoxPlot/W=$plotName matA vs condWave
+		ModifyBoxPlot/W=$plotName trace=$wName,markers={19,-1,19},markerSizes={2,2,2}
+		ModifyBoxPlot/W=$plotName trace=$wName,whiskerMethod=4
 	else
 		AppendViolinPlot/W=$plotName matA vs condWave
+		ModifyViolinPlot/W=$plotName trace=$wName,ShowMean,MeanMarker=19,CloseOutline
+		ModifyViolinPlot/W=$plotName trace=$wName,DataMarker=19
 	endif
-	ModifyViolinPlot/W=$plotName trace=$wName,ShowMean,MeanMarker=19,CloseOutline
-	ModifyViolinPlot/W=$plotName trace=$wName,DataMarker=19
 	Variable alphaLevel = DecideOpacity(nTracks)
 	ModifyGraph/W=$plotName rgb($wName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
 End
