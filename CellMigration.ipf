@@ -7,7 +7,7 @@
 // 1) as sheets in an Excel Workbook, 1 per condition, or
 // 2) as direct outputs from Manual Tracking, in csv format
 // 
-// Select Macros > Cell Migration...
+// Select CellMigr > Cell Migration...
 //
 // Tell the dialog how many conditions you want to load and the magnification and time resolution
 // Next, give each condition a label (name) and then tell Igor where to find the data
@@ -32,6 +32,10 @@ Menu "CellMigr"
 	"Save Reports...", /Q, SaveAllReports()
 	"Recolor Everything", /Q, RecolorAllPlots()
 	"Rerun Analysis", /Q, RerunAnalysis()
+	Submenu "Manual tracking conversion"
+		"Excel to Converted CSV", /Q, Excel2CSV()
+		"CSV to Converted CSV", /Q, CSV2CSV()
+	End
 	"About CellMigration", /Q, AboutCellMigr()
 End
 
@@ -1251,7 +1255,8 @@ Function TidyUpSummaryLayout()
 	Execute /Q "Tile/A=(4,3)/O=1"
 End
 
-
+///	@param	w1	wave for calculation
+///	@param	segmentLength	variable passed for speed, rather than looking up
 STATIC Function StravaCalc(w1,segmentLength)
 	Wave w1
 	Variable segmentLength
@@ -1276,6 +1281,81 @@ STATIC Function StravaCalc(w1,segmentLength)
 	endif	
 	return returnVar
 End
+
+// Saving csv output from Manual Tracking in FIJI is missing the first column
+// It can also not be read by Manual Tracking because it is comma-separated and not tab-separated
+Function Excel2CSV()
+	SetDataFolder root:
+	NewDataFolder/O/S root:convert
+	
+	XLLoadWave/J=1
+	NewPath/O/Q path1, S_path
+	Variable moviemax = ItemsInList(S_value)
+	String sheet,csvFileName,prefix,wList,newName
+	
+	Variable i
+	
+	for(i = 0; i < moviemax; i += 1)
+		sheet = StringFromList(i,S_Value)
+		csvFileName = S_filename + "_" + sheet + ".csv"
+		prefix = "tempW_" + num2str(i)
+		XLLoadWave/S=sheet/R=(A1,H2000)/COLT="N"/O/K=0/N=$prefix/P=path1/Q S_fileName
+		wList = wavelist(prefix + "*",";","")	//make matrices
+		newName = "tempM_" + num2str(i)
+		Concatenate/O/KILL wList, $newName
+		Wave m0 = $newName
+		CheckColumnsOfMatrix(m0)
+		SetDimLabel 1,0,index,m0
+		SetDimLabel 1,1,TrackNo,m0
+		SetDimLabel 1,2,SliceNo,m0
+		SetDimLabel 1,3,x,m0
+		SetDimLabel 1,4,y,m0
+		SetDimLabel 1,5,distance,m0
+		SetDimLabel 1,6,velocity,m0
+		SetDimLabel 1,7,pixelvalue,m0
+		Save/J/M="\n"/U={0,0,1,0}/O/P=path1 m0 as csvFileName
+		KillWaves/Z m0
+	endfor
+	SetDataFolder root:
+	KillDataFolder/Z root:convert
+End
+
+Function CSV2CSV()
+	SetDataFolder root:
+	NewDataFolder/O/S root:convert
+	
+	NewPath/O/Q/M="Select directory of original CSVs" ExpDiskFolder
+	NewPath/O/Q/M="Choose destination directory for converted CSVs" outputDiskFolder
+	String fileList = IndexedFile(expDiskFolder,-1,".csv")
+	Variable moviemax = ItemsInList(fileList)
+	String sheet,csvFileName,prefix,newName,wList
+	
+	Variable i
+	
+	for(i = 0; i < moviemax; i += 1)
+		sheet = StringFromList(i, fileList)
+		prefix = "tempW_" + num2str(i)
+		LoadWave/A=$prefix/J/K=1/L={0,1,0,0,0}/O/P=expDiskFolder/Q sheet
+		wList = wavelist(prefix + "*",";","")	// make matrix for each sheet
+		newName = "tempM_" + num2str(i)
+		Concatenate/O/KILL wList, $newName
+		Wave m0 = $newName
+		CheckColumnsOfMatrix(m0)
+		SetDimLabel 1,0,index,m0
+		SetDimLabel 1,1,TrackNo,m0
+		SetDimLabel 1,2,SliceNo,m0
+		SetDimLabel 1,3,x,m0
+		SetDimLabel 1,4,y,m0
+		SetDimLabel 1,5,distance,m0
+		SetDimLabel 1,6,velocity,m0
+		SetDimLabel 1,7,pixelvalue,m0
+		Save/J/M="\n"/U={0,0,1,0}/O/P=outputDiskFolder m0 as sheet
+		KillWaves/Z m0
+	endfor
+	SetDataFolder root:
+	KillDataFolder/Z root:convert
+End
+
 
 ///////////////////////////////////////////////////////////////////////
 // BACKGROUND FUNCTIONS
