@@ -1,5 +1,6 @@
 # CellMigration
-Analysis of 2D cell migration in Igor Pro
+
+[![DOI](https://zenodo.org/badge/180952157.svg)](https://zenodo.org/badge/latestdoi/180952157)
 
 This is a set of functions to load particle tracks and analyse 2D cell migration in Igor.
 
