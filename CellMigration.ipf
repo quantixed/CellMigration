@@ -1,5 +1,5 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.12		// version number of Migrate()
+#pragma version=1.13		// version number of Migrate()
 #include <Waves Average>
 
 // CellMigration will analyse 2D cell migration in IgorPro
@@ -31,6 +31,7 @@
 ////////////////////////////////////////////////////////////////////////
 Menu "CellMigr"
 	"Cell Migration...", /Q, SetUpMigration()
+	"Superplot...", /Q, SuperplotWorkflow()
 	"Save Reports...", /Q, SaveAllReports()
 	"Recolor Everything", /Q, RecolorAllPlots()
 	"Rerun Analysis", /Q, RerunAnalysis()
@@ -53,8 +54,7 @@ Function SetUpMigration()
 	Variable tStep = 20
 	Variable pxSize = 0.22698
 	Variable segmentLength = 25
-	String hstr = "A directed migration experiment is where a chemoattractant has been used.\r"
-	hstr += "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
+	String hstr = "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
 	
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
@@ -71,6 +71,34 @@ Function SetUpMigration()
 	myIO_Panel(cond)
 End
 
+Function SuperplotWorkflow()
+	SetDataFolder root:
+	// kill all windows and waves before we start
+	CleanSlate()
+	
+	Variable cond = 2
+	Variable reps = 4
+	Variable tStep = 20
+	Variable pxSize = 0.22698
+	Variable segmentLength = 25
+	String hstr = "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
+	
+	Prompt cond, "How many conditions?"
+	Prompt reps, "How many experiments per condition?"
+	Prompt tStep, "Time interval (min)"
+	Prompt pxSize, "Pixel size (\u03BCm)"
+	Prompt segmentLength, "Segment length (\u03BCm)"
+	DoPrompt/HELP=hstr "Specify", cond, reps, tStep, pxSize, segmentLength
+	
+	if (V_flag) 
+		return -1
+	endif
+	
+	Make/O/N=5 paramWave={cond,tStep,pxSize,segmentLength,reps}
+	MakeColorWave(cond)
+	Superplot_Panel(cond,reps)
+End
+
 ////////////////////////////////////////////////////////////////////////
 // Main functions
 ////////////////////////////////////////////////////////////////////////
@@ -78,25 +106,39 @@ End
 Function Migrate()
 	WAVE/Z paramWave = root:paramWave
 	if(!WaveExists(paramWave))
-		Abort "Setup has failed. Missing paramWave."
+		DoAlert 0, "Setup has failed. Missing paramWave."
+		return -1
 	endif
 	
 	// pick up global values needed
 	Variable cond = paramWave[0]
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
+	Variable superPlot = 0, reps
 	WAVE/Z colorWave = root:colorWave
-	WAVE/T condWave = root:condWave
+	WAVE/T/Z condWave = root:condWave
+	WAVE/T/Z condSplitWave = root:condSplitWave
+	if(WaveExists(condSplitWave) == 1)
+		if(cond < numpnts(condSplitWave))
+			superPlot = 1
+			cond = numpnts(condSplitWave)
+			reps = cond / paramWave[0]
+		endif
+	endif
 	// because the user may have used illegal characters in condWave, we make a clean version
-	// for use in Igor and a copy called labelWave to use in plots and layouts
-	WAVE/T labelWave = CleanUpCondWave(condWave)
-	
+	// for use in Igor and a copy of the original called labelWave to use in plots and layouts
+	if(superPlot == 1)
+		WAVE/T labelWave = CleanUpCondWave(condSplitWave)
+		WAVE/T labelWave = CleanUpCondWave(condWave)
+	else
+		WAVE/T labelWave = CleanUpCondWave(condWave)
+	endif
 	
 	// make summary plot windows
 	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;angleHPlot"
 	Variable nPlots = ItemsInList(fullList)
 	String name
-	Variable i
+	Variable i,j
 	
 	for(i = 0; i < nPlots; i += 1)
 		name = StringFromList(i, fullList)
@@ -107,11 +149,15 @@ Function Migrate()
 	String dataFolderName = "root:data"
 	NewDataFolder/O $dataFolderName // make root:data: but don't put anything in it yet
 	
-	String condName,pref
+	String condName, pref
 	Variable moviemax1, moviemax2
 	
 	for(i = 0; i < cond; i += 1)
-		condName = condWave[i]
+		if(superPlot == 1)
+			condName = condSplitWave[i]
+		else
+			condName = condWave[i]
+		endif
 		
 		// make data folder for each condition
 		dataFolderName = "root:data:" + condName
@@ -126,10 +172,33 @@ Function Migrate()
 				print "Caution: different number of stationary tracks compared with real tracks."
 			endif
 		endif
-		// for each condition go and make tracks and plot everything out
-		MakeTracks(i)
+		if(superPlot == 0)
+			// for each condition go and make tracks and plot everything out
+			MakeTracks(i)
+		endif
 		SetDataFolder root:
 	endfor
+	// if we are making a superplot, copy the data into folders named by condWave
+	if(superPlot == 1)
+		String sourceDF = ""
+		cond = numpnts(condWave)
+		for(i = 0; i < cond; i += 1)
+			condName = condWave[i]
+			// make data folder for each master condition
+			dataFolderName = "root:data:" + condName
+			NewDataFolder/O $dataFolderName
+			for(j = 0; j < reps; j += 1)
+				sourceDF = "root:data:" + condSplitWave[i * reps + j]
+				// merge data into master condition folder
+				DuplicateDataFolder/O=2 $sourceDF, $dataFolderName
+			endfor
+			SetDataFolder $dataFolderName
+			// for each condition go and make tracks and plot everything out
+			MakeTracks(i)
+			SetDataFolder root:
+		endfor
+	endif
+	
 	// make the image quilt, spakline and joint histogram and then sort out the layouts
 	Variable optDur = MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
 	MakeJointHistogram(optDur)
@@ -149,8 +218,14 @@ End
 Function LoadMigration(ii)
 	Variable ii
 	
-	WAVE/T condWave = root:condWave
-	String condName = condWave[ii]
+	WAVE/T/Z condSplitWave = root:condSplitWave
+	WAVE/T/Z condWave = root:condWave
+	String condName
+	if(WaveExists(condSplitWave) == 1)
+		condName = condSplitWave[ii]
+	else
+		condName = condWave[ii]
+	endif
 	WAVE/T PathWave1 = root:PathWave1
 	String pathString = PathWave1[ii]
 	String sheet, prefix, matName, wList
@@ -248,8 +323,14 @@ End
 Function CorrectMigration(ii)
 	Variable ii
 	
-	WAVE/T condWave = root:condWave
-	String condName = condWave[ii]
+	WAVE/T/Z condSplitWave = root:condSplitWave
+	WAVE/T/Z condWave = root:condWave
+	String condName
+	if(WaveExists(condSplitWave) == 1)
+		condName = condSplitWave[ii]
+	else
+		condName = condWave[ii]
+	endif
 	WAVE/T PathWave2 = root:PathWave2
 	String pathString = PathWave2[ii]
 	Variable len = strlen(pathString)
@@ -1465,17 +1546,17 @@ Function DoItButtonProc(ctrlName) : ButtonControl
 			// check CondWave
 			okvar = WaveChecker(CondWave)
 			if (okvar == -1)
-				Print "Error: Not all conditions have a name."
+				DoAlert 0, "Error: Not all conditions have a name."
 				break
 			endif
 			okvar = NameChecker(CondWave)
 			if (okvar == -1)
-				Print "Error: Two conditions have the same name."
+				DoAlert 0, "Error: Two conditions have the same name."
 				break
 			endif
 			okvar = WaveChecker(PathWave1)
 			if (okvar == -1)
-				Print "Error: Not all conditions have a file to load."
+				DoAlert 0, "Error: Not all conditions have a file to load."
 				break
 			else
 				Migrate()
@@ -1518,6 +1599,91 @@ STATIC function NameChecker(TextWaveToCheck)
 		endfor
 	endfor
 	return 1
+End
+
+///	@param	cond	number of conditions - determines size of box
+///	@param	reps	number of repitions - determines size of box
+Function Superplot_Panel(cond, reps)
+	Variable cond, reps
+	
+	Variable allCond = cond * reps
+	Wave/Z colorWave = root:colorWave
+	// make global text wave to store paths
+	Make/T/O/N=(cond) condWave // store conditions
+	Make/T/O/N=(allCond) condSplitWave // store conditions subdivided
+	Make/T/O/N=(allCond) PathWave1,PathWave2
+	DoWindow/K FilePicker
+	NewPanel/N=FilePicker/K=1/W=(40,40,840,150+30*allCond)
+	// labelling of columns
+	DrawText/W=FilePicker 10,30,"Name"
+	DrawText/W=FilePicker 160,30,"Cell tracking data (directory of CSVs or Excel file)"
+	DrawText/W=FilePicker 480,30,"Optional: stationary data"
+	DrawText/W=FilePicker 10,100+30*allCond,"CellMigration"
+	// do it button
+	Button DoIt,pos={680,70+30*allCond},size={100,20},proc=SPDoItButtonProc,title="Do It"
+	// insert rows
+	String buttonName1a,buttonName1b,buttonName2a,buttonName2b,boxName0,boxName1,boxName2
+	Variable i
+	
+	for(i = 0; i < allCond; i += 1)
+		boxName0 = "box0_" + num2str(i)
+		buttonName1a = "dir1_" + num2str(i)
+		buttonName1b = "file1_" + num2str(i)
+		boxName1 = "box1_" + num2str(i)
+		buttonName2a = "dir2_" + num2str(i)
+		buttonName2b = "file2_" + num2str(i)
+		boxName2 = "box2_" + num2str(i)
+		// row label
+		DrawText/W=FilePicker 10,68+i*30,num2str(mod(i,reps)+1)
+		// condition label
+		SetVariable $boxName0,pos={30,53+i*30},size={100,14},value= condWave[floor(i/reps)], title=" "
+		// dir button
+		Button $buttonName1a,pos={160,50+i*30},size={38,20},proc=ButtonProc,title="Dir"
+		// file button
+		Button $buttonName1b,pos={200,50+i*30},size={38,20},proc=ButtonProc,title="File"
+		// file or dir box
+		SetVariable $boxName1,pos={240,53+i*30},size={220,14},value= PathWave1[i], title=" "
+		// stationary dir button
+		Button $buttonName2a,pos={480,50+i*30},size={38,20},proc=ButtonProc,title="Dir"
+		// stationary button
+		Button $buttonName2b,pos={520,50+i*30},size={38,20},proc=ButtonProc,title="File"
+		// stationary or dir box
+		SetVariable $boxName2,pos={560,53+i*30},size={220,14},value= PathWave2[i], title=" "
+		SetDrawEnv fillfgc=(colorWave[floor(i/reps)][0],colorWave[floor(i/reps)][1],colorWave[floor(i/reps)][2])
+		DrawOval/W=FilePicker 130,50+i*30,148,68+i*30
+	endfor
+End
+
+
+Function SPDoItButtonProc(ctrlName) : ButtonControl
+	String ctrlName
+ 	
+ 	WAVE/T CondWave, condSplitWave, PathWave1
+	Variable okvar = 0
+	
+	strswitch(ctrlName)	
+		case "DoIt" :
+			// check MasterCondWave
+			okvar = WaveChecker(CondWave)
+			if (okvar == -1)
+				DoAlert 0, "Not all conditions have a name."
+				break
+			endif
+			okvar = NameChecker(CondWave)
+			if (okvar == -1)
+				DoAlert 0, "Error: Two conditions have the same name."
+				break
+			endif
+			okvar = WaveChecker(PathWave1)
+			if (okvar == -1)
+				DoAlert 0, "Error: Not all conditions have a file to load."
+				break
+			else
+				Variable reps = numpnts(CondSplitWave) / numpnts(CondWave)
+				CondSplitWave[] = CondWave[floor(p / reps)] + "_" + num2str(mod(p,reps) + 1)
+				Migrate()
+			endif
+	endswitch	
 End
 
 ////////////////////////////////////////////////////////////////////////
@@ -1691,7 +1857,8 @@ Function SaveAllReports()
 	String layoutList = WinList("*layout", ";", "WIN:4")
 	Variable nLayouts = ItemsInList(layoutList)
 	if(nLayouts == 0)
-		Abort "No reports to save!"
+		DoAlert 0, "No reports to save!"
+		return -1
 	endif
 	
 	NewPath/O/Q OutputPath
@@ -1723,7 +1890,8 @@ Function RecolorAllPlots()
 	SetDataFolder root:
 	WAVE/Z colorWave = root:colorWave
 	if(!WaveExists(colorWave))
-		Abort "3-column colorwave required"
+		DoAlert 0, "3-column colorwave required"
+		return -1
 	endif
 	Duplicate/O colorWave, colorWave_BKP
 	// present dialog to work on recoloring
@@ -1809,7 +1977,8 @@ Function RerunAnalysis()
 	KillDataFolder root:data:
 	WAVE/Z/T CondWave
 	if(!WaveExists(CondWave))
-		Abort "Something is wrong. Cannot rerun the analysis."
+		DoAlert 0, "Something is wrong. Cannot rerun the analysis."
+		return -1
 	endif
 	Migrate()
 End
@@ -1820,7 +1989,7 @@ Function AboutCellMigr()
 End
 
 // Function from aclight to retrieve #pragma version number
-/// @param procedureWinTitleStr	This is the procedure window "LoadMigration.ipf"
+/// @param procedureWinTitleStr	This is the name of this procedure window
 Function GetProcedureVersion(procedureWinTitleStr)
 	String procedureWinTitleStr
  
