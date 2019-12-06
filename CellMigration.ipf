@@ -181,6 +181,8 @@ Function Migrate()
 	// if we are making a superplot, copy the data into folders named by condWave
 	if(superPlot == 1)
 		String sourceDF = ""
+		Variable condBiggestRange = 0
+		Variable biggestRange = 0, theRange, rangeMin, rangeMax
 		cond = numpnts(condWave)
 		for(i = 0; i < cond; i += 1)
 			condName = condWave[i]
@@ -193,8 +195,17 @@ Function Migrate()
 				DuplicateDataFolder/O=2 $sourceDF, $dataFolderName
 			endfor
 			SetDataFolder $dataFolderName
-			// for each condition go and make tracks and plot everything out
+			// as in the main program: for each condition go and make tracks and plot everything out
 			MakeTracks(i)
+			// find largest min-max span for grouped data
+			Wave w = $(datafolderName + ":sum_Speed_" + condName)
+			theRange = WaveMax(w) - WaveMin(w)
+			if(theRange > biggestRange)
+				biggestRange = theRange
+				condBiggestRange = i
+				rangeMin = WaveMin(w)
+				rangeMax = WaveMax(w)
+			endif
 			SetDataFolder root:
 		endfor
 	endif
@@ -203,6 +214,74 @@ Function Migrate()
 	Variable optDur = MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
 	MakeJointHistogram(optDur)
 	TidyCondSpecificLayouts()
+	
+	// now make the superplot
+	if(superPlot == 1)
+		Variable nBin
+		Variable binSize = (rangeMax - rangeMin) / nBin // overwritten below
+		Variable loBin, hiBin
+		Variable nRow, firstRow, inBin, maxNBin
+		Variable groupWidth = 0.4 // this is hard-coded for now
+		String wName
+		for(i = 0; i < cond; i += 1)
+			condName = condWave[i]
+			// go to data folder for each master condition
+			dataFolderName = "root:data:" + condName
+			SetDataFolder $dataFolderName
+			wName = "sum_Speed_" + condName
+			Wave w = $wName
+			Duplicate/O/FREE w, tempW, keyW
+			keyW[] = p
+			Sort tempW, tempW, keyW
+			nRow = numpnts(w)
+			// make wave to store the counts per bin
+			Make/O/N=(nRow)/I/FREE spSum_IntWave
+			Make/O/N=(nRow)/FREE spSum_nWave
+			Make/O/N=(nRow) spSum_xWave
+			// make a histogram of w so that we can find the modal bin
+			Histogram/B=5 w
+			WAVE/Z W_Histogram
+			nBin = numpnts(W_Histogram)
+			binSize = deltax(W_Histogram)
+			for(j = 0; j < nBin; j += 1)
+				loBin = WaveMin(tempW) + (j * binSize)
+				hiBin = WaveMin(tempW) + ((j + 1) * binSize)
+				spSum_IntWave[] = (tempW[p] >= loBin && tempW[p] < hiBin) ? 1 : 0
+				inBin = sum(spSum_IntWave)
+				// is there anything to calculate?
+				if(inBin == 0)
+					continue
+				endif
+				// yes, then 
+				FindValue/I=1 spSum_IntWave
+				if(V_row == -1)
+					continue
+				else
+					firstRow = V_row
+				endif
+				spSum_nWave[] = (spSum_IntWave[p] == 1) ? p - firstRow : NaN
+				if(mod(inBin,2) == 0)
+					// change the foundRowValue to a triangular number (divisor would be inBin - 1 to get -1 to +1)
+					spSum_nWave[] = (mod(spSum_nWave[p],2) == 0) ? (spSum_nWave[p] + 1) / -(maxNBin - 1) : spSum_nWave[p] / (maxNBin - 1)
+				else
+					// change the foundRowValue to a triangular number (divisor would be inBin to get -1 to +1)
+					spSum_nWave[] = (mod(spSum_nWave[p],2) == 0) ? spSum_nWave[p] / maxNBin : (spSum_nWave[p] + 1) / -maxNBin
+				endif
+				// assign to xWave
+				spSum_xWave[] = (numtype(spSum_nWave[p]) != 2) ? i + spSum_nWave[p] * groupWidth : spSum_xWave[p]
+			endfor
+
+			Sort keyW, spSum_xWave
+
+			SetDataFolder root:
+		endfor
+
+		// if there is 3 they should be set as fractional distance symmetrical about 0 (this depends on the number of points in the modal bin and the width we want to span)
+		// So go through - find number ineach bin. Then go through again and set the fractional distance from the index of the group
+		// Sort by the keywave to take us back to the original order
+		// Can also colour the points by index of the subgroups
+		
+	endif
 	
 	KillWindow/Z summaryLayout
 	NewLayout/N=summaryLayout
