@@ -1343,6 +1343,7 @@ Function TidyUpSummaryLayout()
 	AppendLayoutObject /W=summaryLayout graph StravaPlot
 	
 	// now make the superplot
+	// this part is quite long and could move to its own function
 	if(superPlot == 1)
 		String plotName = "SuperPlot"
 		KillWindow/Z $plotName
@@ -1351,6 +1352,8 @@ Function TidyUpSummaryLayout()
 		Variable nRow, firstRow, inBin, maxNBin
 		Variable groupWidth = 0.4 // this is hard-coded for now
 		Variable alphaLevel = DecideOpacity(mostTracks)
+		Variable reps = numpnts(condSplitWave) / numpnts(condWave)
+		String aveName, errName
 		for(i = 0; i < cond; i += 1)
 			condName = condWave[i]
 			// go to data folder for each master condition
@@ -1402,19 +1405,59 @@ Function TidyUpSummaryLayout()
 			// make the order of xWave match sum_Speed_*
 			Sort keyW, spSum_xWave
 			AppendToGraph/W=$plotName $wName vs spSum_xWave
+			ModifyGraph/W=$plotName mode($wName)=3,marker($wName)=19
 			ModifyGraph/W=$plotName rgb($wName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],alphaLevel)
+			// deduce which rows of sum_Speed_* come from which expt
+			wList = WaveList("cd_" + condName + "*", ";", "")
+			nTracks = ItemsInList(wList)
+			if(nTracks != numpnts(w))
+				DoAlert 0, "Check how the split data has compiled into the master wave"
+			endif
+			speedName = "sum_Index_" + condName
+			Make/O/N=(nTracks) $speedName
+			Wave indexW = $speedName
+			for(j = 0; j < nTracks; j += 1)
+				wName = StringFromList(j,wList)
+				wName = ReplaceString("cd_"+condName+"_",wName,"") // delete first bit
+				indexW[j] = str2num(wName[0]) - 1 // this gives the index (0-Based!)
+			endfor
+			// check that max here is the same as reps
+			if(WaveMax(indexW) + 1 != reps)
+				DoAlert 0, "Problem: please check how the split waves got reassembled"
+			endif
+			aveName = "spSum_" + condname + "_Ave"
+			Make/O/N=(reps,3) $aveName
+			Wave w1 = $aveName
+			errName = ReplaceString("_Ave",AveName,"_Err")
+			Make/O/N=(reps) $errName
+			Wave w2 = $errName
+			// set 1st column to be the x position for the averages
+			w1[][0] = i
+			// y values go in 2nd col and in 3rd col we put the marker types
+			Make/O/N=(12)/FREE markerW={19,17,16,18,23,29,26,14,8,6,5,7}
+			w1[][2] = markerW[p]
+			for(j = 0; j < reps; j += 1)
+				Extract/O/FREE w, extractedValW, indexW == j
+				WaveStats extractedValW
+				w1[j][1] = V_Avg
+				w2[j] = V_sem
+			endfor
+			AppendToGraph/W=$plotName w1[][1] vs w1[][0]
+			ModifyGraph/W=$plotName rgb($aveName)=(0,0,0)
+			ModifyGraph/W=$plotName mode($aveName)=3
+			ModifyGraph/W=$plotName zmrkNum($aveName)={w1[][2]}
+			// error bars can be added here if required
+//			ErrorBars/W=$plotName $aveName Y,wave=(w2,w2)
 			SetDataFolder root:
 		endfor
-		// Can also colour the points by index of the subgroups
+		Label/W=$plotName left "Average speed (\u03BCm/min)"
+		SetAxis/A/N=1/E=1/W=$plotName left
+		Make/O/N=(numpnts(labelWave)) labelXWave = p
+		ModifyGraph/W=$plotName userticks(bottom)={labelXWave,labelWave}
+		SetAxis/W=$plotName bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
+		// add superplot to layout
+		AppendLayoutObject /W=summaryLayout graph SuperPlot
 	endif
-	ModifyGraph/W=$plotName mode=3,marker=19
-	Label/W=$plotName left "Average speed (\u03BCm/min)"
-	SetAxis/A/N=1/E=1/W=$plotName left
-	Make/O/N=(numpnts(labelWave)) labelXWave = p
-	ModifyGraph/W=$plotName userticks(bottom)={labelXWave,labelWave}
-	SetAxis/W=$plotName bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
-	// add superplot to layout
-	AppendLayoutObject /W=summaryLayout graph SuperPlot
 	
 	// finish up by going to root and making sure layout is OK
 	SetDataFolder root:
