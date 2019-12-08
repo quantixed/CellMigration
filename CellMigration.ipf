@@ -67,7 +67,7 @@ Function SetUpMigration()
 	endif
 	
 	Make/O/N=4 paramWave={cond,tStep,pxSize,segmentLength}
-	MakeColorWave(cond)
+	MakeColorWave(cond,"colorWave")
 	myIO_Panel(cond)
 End
 
@@ -95,7 +95,7 @@ Function SuperplotWorkflow()
 	endif
 	
 	Make/O/N=5 paramWave={cond,tStep,pxSize,segmentLength,reps}
-	MakeColorWave(cond)
+	MakeColorWave(cond,"colorWave")
 	Superplot_Panel(cond,reps)
 End
 
@@ -1345,15 +1345,21 @@ Function TidyUpSummaryLayout()
 	// now make the superplot
 	// this part is quite long and could move to its own function
 	if(superPlot == 1)
-		String plotName = "SuperPlot"
-		KillWindow/Z $plotName
-		Display/N=$plotName/HIDE=1
+		KillWindow/Z SuperPlot_cond
+		Display/N=SuperPlot_cond/HIDE=1
+		KillWindow/Z SuperPlot_rep
+		Display/N=SuperPlot_rep/HIDE=1
 		Variable nBin, binSize, loBin, hiBin
 		Variable nRow, firstRow, inBin, maxNBin
 		Variable groupWidth = 0.4 // this is hard-coded for now
 		Variable alphaLevel = DecideOpacity(mostTracks)
 		Variable reps = numpnts(condSplitWave) / numpnts(condWave)
+		MakeColorWave(reps,"colorSplitWave")
+		WAVE/Z colorSplitWave = root:colorSplitWave
+		MakeColorWave(reps,"colorSplitWaveA", alpha = alphaLevel)
+		WAVE/Z colorSplitWaveA = root:colorSplitWaveA
 		String aveName, errName
+		Make/O/N=(reps,cond)/FREE collatedMat
 		for(i = 0; i < cond; i += 1)
 			condName = condWave[i]
 			// go to data folder for each master condition
@@ -1404,9 +1410,6 @@ Function TidyUpSummaryLayout()
 			endfor
 			// make the order of xWave match sum_Speed_*
 			Sort keyW, spSum_xWave
-			AppendToGraph/W=$plotName $wName vs spSum_xWave
-			ModifyGraph/W=$plotName mode($wName)=3,marker($wName)=19
-			ModifyGraph/W=$plotName rgb($wName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],alphaLevel)
 			// deduce which rows of sum_Speed_* come from which expt
 			wList = WaveList("cd_" + condName + "*", ";", "")
 			nTracks = ItemsInList(wList)
@@ -1426,37 +1429,61 @@ Function TidyUpSummaryLayout()
 				DoAlert 0, "Problem: please check how the split waves got reassembled"
 			endif
 			aveName = "spSum_" + condname + "_Ave"
-			Make/O/N=(reps,3) $aveName
+			Make/O/N=(reps,4) $aveName
 			Wave w1 = $aveName
 			errName = ReplaceString("_Ave",AveName,"_Err")
 			Make/O/N=(reps) $errName
 			Wave w2 = $errName
 			// set 1st column to be the x position for the averages
 			w1[][0] = i
-			// y values go in 2nd col and in 3rd col we put the marker types
+			// y values go in 2nd col and in 3rd col we put the marker types, 4th will be p
 			Make/O/N=(12)/FREE markerW={19,17,16,18,23,29,26,14,8,6,5,7}
 			w1[][2] = markerW[p]
+			w1[][3] = p
 			for(j = 0; j < reps; j += 1)
 				Extract/O/FREE w, extractedValW, indexW == j
 				WaveStats extractedValW
 				w1[j][1] = V_Avg
 				w2[j] = V_sem
 			endfor
-			AppendToGraph/W=$plotName w1[][1] vs w1[][0]
-			ModifyGraph/W=$plotName rgb($aveName)=(0,0,0)
-			ModifyGraph/W=$plotName mode($aveName)=3
-			ModifyGraph/W=$plotName zmrkNum($aveName)={w1[][2]}
+			// put the means for each repeat for this group into collatedMat (to do stats)
+			collatedMat[][i] = w1[p][1]
+			wName = "sum_Speed_" + condName
+			// add to first superplot
+			AppendToGraph/W=SuperPlot_cond $wName vs spSum_xWave
+			ModifyGraph/W=SuperPlot_cond mode($wName)=3,marker($wName)=19
+			ModifyGraph/W=SuperPlot_cond rgb($wName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],alphaLevel)
+			AppendToGraph/W=SuperPlot_cond w1[][1] vs w1[][0]
+			ModifyGraph/W=SuperPlot_cond rgb($aveName)=(0,0,0)
+			ModifyGraph/W=SuperPlot_cond mode($aveName)=3
+			ModifyGraph/W=SuperPlot_cond zmrkNum($aveName)={w1[][2]}
 			// error bars can be added here if required
-//			ErrorBars/W=$plotName $aveName Y,wave=(w2,w2)
+//			ErrorBars/W=SuperPlot_cond $aveName Y,wave=(w2,w2)
+
+			// add to other superplot
+			AppendToGraph/W=SuperPlot_rep $wName vs spSum_xWave
+			ModifyGraph/W=SuperPlot_rep mode($wName)=3,marker($wName)=19
+			ModifyGraph/W=SuperPlot_rep zColor($wName)={indexW,0,reps,cindexRGB,0,colorSplitWaveA}
+			AppendToGraph/W=SuperPlot_rep w1[][1] vs w1[][0]
+			ModifyGraph/W=SuperPlot_rep zColor($aveName)={w1[][3],0,reps,cindexRGB,0,colorSplitWave}
+			ModifyGraph/W=SuperPlot_rep mode($aveName)=3,marker($aveName)=19,useMrkStrokeRGB($aveName)=1
 			SetDataFolder root:
 		endfor
-		Label/W=$plotName left "Average speed (\u03BCm/min)"
-		SetAxis/A/N=1/E=1/W=$plotName left
+		Label/W=SuperPlot_cond left "Average speed (\u03BCm/min)"
+		SetAxis/A/N=1/E=1/W=SuperPlot_cond left
 		Make/O/N=(numpnts(labelWave)) labelXWave = p
-		ModifyGraph/W=$plotName userticks(bottom)={labelXWave,labelWave}
-		SetAxis/W=$plotName bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
-		// add superplot to layout
-		AppendLayoutObject /W=summaryLayout graph SuperPlot
+		ModifyGraph/W=SuperPlot_cond userticks(bottom)={labelXWave,labelWave}
+		SetAxis/W=SuperPlot_cond bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
+
+		Label/W=SuperPlot_rep left "Average speed (\u03BCm/min)"
+		SetAxis/A/N=1/E=1/W=SuperPlot_rep left
+		ModifyGraph/W=SuperPlot_rep userticks(bottom)={labelXWave,labelWave}
+		SetAxis/W=SuperPlot_rep bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
+		// do stats
+		DoStatsAndLabel(collatedMat,"SuperPlot_rep")
+		// add superplots to layout
+		AppendLayoutObject /W=summaryLayout graph SuperPlot_cond
+		AppendLayoutObject /W=summaryLayout graph SuperPlot_rep
 	endif
 	
 	// finish up by going to root and making sure layout is OK
@@ -1495,6 +1522,71 @@ STATIC Function StravaCalc(w1,segmentLength)
 		returnVar = NaN
 	endif	
 	return returnVar
+End
+
+STATIC Function DoStatsAndLabel(m0,plotName)
+	Wave m0
+	String plotName
+	
+	String wName = NameOfWave(m0)
+	Variable groups = DimSize(m0,1)
+	Variable reps = DimSize(m0,0)
+	String pStr, boxName, lookup
+	Variable pVal, i
+	if(groups == 2)
+		Make/O/N=(reps)/FREE w0,w1
+		w0[] = m0[p][0]
+		w1[] = m0[p][1]
+		KillWaves/Z m0
+		StatsTTest/Q w0,w1
+		Wave/Z W_StatsTTest
+		pVal = W_StatsTTest[%P]
+		pStr = FormatPValue(pVal)
+		TextBox/C/N=text0/W=$plotName/F=0/A=MT/X=0.00/Y=0.00 "p = " + pStr
+	elseif(groups > 2)
+		SplitWave m0
+		StatsDunnettTest/Q/WSTR=S_WaveNames
+		WAVE/Z M_DunnettTestResults
+		for(i = 1; i < groups; i += 1)
+			boxName = "text" + num2str(i)
+			lookup = "0_vs_" + num2str(i)
+			pStr = FormatPValue(M_DunnettTestResults[%$(lookup)][%P])
+			TextBox/C/N=$boxName/W=$plotName/F=0/A=MT/X=(((i - (groups/2 - 0.5))/(groups / 2))/2 * 100)/Y=0.00 pStr
+		endfor
+		KillTheseWaves(S_WaveNames)
+	else
+		return -1
+	endif
+end
+
+STATIC Function/S FormatPValue(pValVar)
+	Variable pValVar
+	
+	String pVal = ""
+	String preStr,postStr
+	
+	if(pValVar > 0.05)
+		sprintf pVal, "%*.*f", 2,2, pValVar
+	else
+		sprintf pVal, "%*.*e", 1,1, pValVar
+	endif
+	if(pValVar > 0.99)
+		// replace any p ~= 1 with p > 0.99
+		pVal = "> 0.99"
+	elseif(pValVar == 0)
+		// replace any p = 0 with p < 1e-24
+		pVal = "< 1e-24"
+	endif
+	if(StringMatch(pVal,"*e*") == 1)
+		preStr = pVal[0,2]
+		if(StringMatch(pVal[5],"0") == 1)
+			postStr = pVal[6]
+		else
+			postStr = pVal[5,6]
+		endif
+		pVal = preStr + " x 10\S\u2212" + postStr
+	endif
+	return pVal
 End
 
 // Saving csv output from Manual Tracking in FIJI is missing the first column
@@ -1858,48 +1950,58 @@ STATIC Function byte_value(data, byte)
 End
 
 /// @param	cond	variable for number of conditions
-Function MakeColorWave(cond)
-	Variable cond
+Function MakeColorWave(nRow, wName, [alpha])
+	Variable nRow
+	String wName
+	Variable alpha
 	
 	// Pick colours from SRON palettes
 	String pal
-	if(cond == 1)
+	if(nRow == 1)
 		pal = SRON_1
-	elseif(cond == 2)
+	elseif(nRow == 2)
 		pal = SRON_2
-	elseif(cond == 3)
+	elseif(nRow == 3)
 		pal = SRON_3
-	elseif(cond == 4)
+	elseif(nRow == 4)
 		pal = SRON_4
-	elseif(cond == 5)
+	elseif(nRow == 5)
 		pal = SRON_5
-	elseif(cond == 6)
+	elseif(nRow == 6)
 		pal = SRON_6
-	elseif(cond == 7)
+	elseif(nRow == 7)
 		pal = SRON_7
-	elseif(cond == 8)
+	elseif(nRow == 8)
 		pal = SRON_8
-	elseif(cond == 9)
+	elseif(nRow == 9)
 		pal = SRON_9
-	elseif(cond == 10)
+	elseif(nRow == 10)
 		pal = SRON_10
-	elseif(cond == 11)
+	elseif(nRow == 11)
 		pal = SRON_11
 	else
 		pal = SRON_12
 	endif
 	
 	Variable color
-	Make/O/N=(cond,3) root:colorwave
-	WAVE colorWave = root:colorWave
+	String colorWaveFullName = "root:" + wName
+	if(ParamisDefault(alpha) == 1)
+		Make/O/N=(nRow,3) $colorWaveFullName
+		WAVE w = $colorWaveFullName
+	else
+		Make/O/N=(nRow,4) $colorWaveFullName
+		WAVE w = $colorWaveFullName
+		w[][3] = alpha
+	endif
+	
 	Variable i
 	
-	for(i = 0; i < cond; i += 1)
+	for(i = 0; i < nRow; i += 1)
 		// specify colours
 		color = str2num(StringFromList(mod(i, 12),pal))
-		colorwave[i][0] = hexcolor_red(color)
-		colorwave[i][1] = hexcolor_green(color)
-		colorwave[i][2] = hexcolor_blue(color)
+		w[i][0] = hexcolor_red(color)
+		w[i][1] = hexcolor_green(color)
+		w[i][2] = hexcolor_blue(color)
 	endfor
 End
 
@@ -1922,6 +2024,18 @@ STATIC Function CleanSlate()
 	for(i = 0; i < allItems; i += 1)
 		name = GetIndexedObjNameDFR(dfr, 4, i)
 		KillDataFolder $name		
+	endfor
+End
+
+STATIC Function KillTheseWaves(wList)
+	String wList
+	Variable allItems = ItemsInList(wList)
+	String name
+	Variable i
+ 
+	for(i = 0; i < allItems; i += 1)
+		name = StringFromList(i, wList)
+		KillWaves/Z $name
 	endfor
 End
 
