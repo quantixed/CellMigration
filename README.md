@@ -1,6 +1,6 @@
 # CellMigration
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3369644.svg)](https://doi.org/10.5281/zenodo.3369644)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3574118.svg)](https://doi.org/10.5281/zenodo.3574118)
 
 This is a set of functions to load particle tracks and analyse 2D cell migration in Igor.
 
