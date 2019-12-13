@@ -1,10 +1,10 @@
 # CellMigration
 
-[![DOI](https://zenodo.org/badge/180952157.svg)](https://zenodo.org/badge/latestdoi/180952157)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3369644.svg)](https://doi.org/10.5281/zenodo.3369644)
 
 This is a set of functions to load particle tracks and analyse 2D cell migration in Igor.
 
-[**Examples**](#Examples) | [**Workflow**](#Workflow) |
+[**Examples**](#Examples) | [**Workflow**](#Workflow) | [**Superplots**](#Superplots)
 
 ## Examples
 
@@ -81,7 +81,7 @@ Colours are taken from Paul Tol SRON stylesheet. A maximum of 12 conditions are 
 
 ![img](img/colorPlot.png?raw=true "image")
 
-### Superplots
+## Superplots
 The main cell migration program is useful for analysing single experiment data or data aggregated from multiple experiments. However, the experimental reproducibibility is useful to examine and this can be done using the Superplot program.
 
 If you have two conditions and four experimental repeats (eight datasets in total). You can analyse in a few different ways:
