@@ -81,15 +81,42 @@ Colours are taken from Paul Tol SRON stylesheet. A maximum of 12 conditions are 
 
 ![img](img/colorPlot.png?raw=true "image")
 
+### Superplots
+The main cell migration program is useful for analysing single experiment data or data aggregated from multiple experiments. However, the experimental reproducibibility is useful to examine and this can be done using the Superplot program.
+
+If you have two conditions and four experimental repeats (eight datasets in total). You can analyse in a few different ways:
+
+- Superplot - respects the experimental repeats and allows comparison of reproducibility. Aggregates data by condition like _CellMigration_ does.
+- CellMigration - analyse the data as an eight-way comparison, or collapse the data before loading for a two-way comparison.
+
+Select CellMigr>Superplot... and specify the number of conditions and experimental repeats (unequal numbers of repeats across conditions are not supported).
+
+![img](img/sp_specify.png?raw=true "image")
+
+Next, a panel pops up where the user specifies:
+
+1. The name of each condition (entries are autofilled for the condition)
+2. Either the directory containing all the csvs from that condition-repeat *or* the Excel workbook containing the data (offsetting data is optional).
+
+![img](img/sp_filepicker.png?raw=true "image")
+
+The analysis proceeds as described for the main program, giving aggregated reports as before. However, two superplots are generated for the cell migration speed data. A t-test or Dunnett post-hoc test (control is first group) is done on the experimental repeats.
+
+![img](img/superplot.png?raw=true "image")
+
+The colours in the right hand superplot correspond to experimental repeat.
+
 ### Compatability
 Written for IgorPro 8.
 
-- From v 1.12 there was no back-compatbility for IgorPro 7.
+- From v 1.12 there was no back-compatability for IgorPro 7.
 - From v 1.03 there was no back-compatability for IgorPro 6.37.
 
 ### Notes
-\* *CSV output:* This is the preferred method. Save the output direct from ImageJ. Use a directory of CSVs percondition. They can be named anything, as long as they have .csv extension. If you need offsetting then the same named files are needed for this (in a different directory).
+\* *CSV output:* This is the preferred method. Save the output direct from ImageJ. Use a directory of CSVs per condition. They can be named anything, as long as they have .csv extension. If you need offsetting then the same named files are needed for this (in a different directory).
 
 \*  *Excel:* Use 1 workbook per condition. Suggest that each sheet is a field of view, containing all cells in the field. So for two experimental conditions with 10 multipoints each, you will have two workbooks each with 10 worksheets.
+
+\* *Superplots:* To analyse conditions, but take into account experimental replications, use the superplot functionality. Here, one directory of CSVs (or Excel workbook) is required for each condition-replication. So for two conditions, with four replications, eight directories/workbooks are required.
 
 \*  *Offsetting:* For offsetting data, a directory of CSVs or workbook per condition is needed with corresponding files or sheets to the primary data. It is important that every frame has a tracked point.
