@@ -1,6 +1,7 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma version=1.13		// version number of Migrate()
 #include <Waves Average>
+#include <ColorWaveEditor>
 
 // CellMigration will analyse 2D cell migration in IgorPro
 // Use ImageJ to track the cells. Outputs from tracking are saved either 
@@ -33,7 +34,7 @@ Menu "CellMigr"
 	"Cell Migration...", /Q, SetUpMigration()
 	"Superplot...", /Q, SuperplotWorkflow()
 	"Save Reports...", /Q, SaveAllReports()
-	"Recolor Everything", /Q, RecolorAllPlots()
+	"Recolor Everything", /Q, RecolorAllPlotsWrapper()
 	"Rerun Analysis", /Q, RerunAnalysis()
 	Submenu "Manual tracking conversion"
 		"Excel to Converted CSV", /Q, Excel2CSV()
@@ -1374,7 +1375,7 @@ Function TidyUpSummaryLayout()
 			// make wave to store the counts per bin
 			Make/O/N=(nRow)/I/FREE spSum_IntWave
 			Make/O/N=(nRow)/FREE spSum_nWave
-			Make/O/N=(nRow) spSum_xWave
+			Make/O/N=(nRow) spSum_xWave = i
 			// make a histogram of w so that we can find the modal bin
 			Histogram/B=5 w
 			WAVE/Z W_Histogram
@@ -1384,6 +1385,11 @@ Function TidyUpSummaryLayout()
 			for(j = 0; j < nBin; j += 1)
 				loBin = WaveMin(tempW) + (j * binSize)
 				hiBin = WaveMin(tempW) + ((j + 1) * binSize)
+				if(j == 0)
+					loBin = 0
+				elseif( j == nBin - 1)
+					hiBin = inf
+				endif
 				spSum_IntWave[] = (tempW[p] >= loBin && tempW[p] < hiBin) ? 1 : 0
 				inBin = sum(spSum_IntWave)
 				// is there anything to calculate?
@@ -1531,6 +1537,10 @@ STATIC Function DoStatsAndLabel(m0,plotName)
 	String wName = NameOfWave(m0)
 	Variable groups = DimSize(m0,1)
 	Variable reps = DimSize(m0,0)
+	if(reps < 3)
+		Print "Less than three repeats, so no stats added to superplot"
+		return -1
+	endif
 	String pStr, boxName, lookup
 	Variable pVal, i
 	if(groups == 2)
@@ -2126,7 +2136,7 @@ Function SaveAllReports()
 	endfor
 End
 
-Function RecolorAllPlots()
+Function RecolorAllPlotsWrapper()
 	SetDataFolder root:
 	WAVE/Z colorWave = root:colorWave
 	if(!WaveExists(colorWave))
@@ -2135,14 +2145,19 @@ Function RecolorAllPlots()
 	endif
 	Duplicate/O colorWave, colorWave_BKP
 	// present dialog to work on recoloring
-	//
+	CWE_MakeClientColorEditor(colorWave, 0, 65535, "Edit Colors","ColorWave","RecolorAllPlots")
+End
+
+Function RecolorAllPlots(colorWave,colorSpace)
+	Wave colorWave
+	Variable colorSpace
 	WAVE/T condWave = root:condWave
 	Variable cond = numpnts(condWave)
 
 	Variable i,j,k
 	
 	String plotList = "anglePlot;cdPlot;DAplot;dDplot;ivHist;ivPlot;MSDplot;quilt;sprkln;tkplot;"
-	// plots with 0.5 alpha
+	// plots with less than 1 alpha
 	String halfList = "cdPlot;DAplot;dDplot;ivPlot;MSDplot;tkPlot;"
 	plotList = RemoveFromList(halfList, plotList)
 	Variable nPlots = ItemsInList(plotList)
@@ -2177,7 +2192,7 @@ Function RecolorAllPlots()
 			for(k = 0; k < nTraces; k += 1)
 				traceName = StringFromList(k,traceList)
 				if(stringmatch(traceName,"W_*") == 0)
-					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32767)
+					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[i][0],colorWave[i][1],colorWave[i][2],32768)
 				endif
 			endfor
 		endfor
@@ -2196,6 +2211,27 @@ Function RecolorAllPlots()
 				condName = condWave[k]
 				if(stringmatch(traceName,"*"+condName) == 1)
 					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[k][0],colorWave[k][1],colorWave[k][2])
+				endif
+			endfor
+		endfor
+	endfor
+	
+	plotlist = "speedPlot;stravaPlot;SuperPlot_cond;"
+	nPlots = ItemsInList(plotList)
+	Variable alphaLevel
+	
+	for(i = 0; i < nPlots; i += 1)
+		plotName = StringFromList(i,plotList)
+		traceList = TraceNameList(plotName, ";", 25)
+		nTraces = ItemsInList(traceList)
+		for(j = 0; j < nTraces; j += 1)
+			traceName = StringFromList(j,traceList)
+			Wave w = TraceNameToWaveRef(plotName,traceName)
+			alphaLevel = DecideOpacity(DimSize(w,0))
+			for(k = 0; k < cond; k += 1)
+				condName = condWave[k]
+				if(stringmatch(traceName,"*"+condName) == 1)
+					ModifyGraph/W=$plotName rgb($traceName)=(colorWave[k][0],colorWave[k][1],colorWave[k][2], alphaLevel)
 				endif
 			endfor
 		endfor
