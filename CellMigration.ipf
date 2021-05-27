@@ -1,13 +1,14 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma version=1.13		// version number of Migrate()
+#pragma version = 1.14		// version number of Migrate()
+#pragma ModuleName = CellMigration
 #include <Waves Average>
 #include <ColorWaveEditor>
 
 // CellMigration will analyse 2D cell migration in IgorPro
-// Use ImageJ to track the cells. Outputs from tracking are saved either 
+// Use ImageJ to track the cells. Outputs from tracking are saved either
 // 1) as sheets in an Excel Workbook, 1 per condition, or
 // 2) as direct outputs from Manual Tracking, in csv format
-// 
+//
 // Select CellMigr > Cell Migration...
 //
 // Tell the dialog how many conditions you want to load and the magnification and time resolution
@@ -50,23 +51,23 @@ Function SetUpMigration()
 	SetDataFolder root:
 	// kill all windows and waves before we start
 	CleanSlate()
-	
+
 	Variable cond = 2
 	Variable tStep = 20
 	Variable pxSize = 0.22698
 	Variable segmentLength = 25
 	String hstr = "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
-	
+
 	Prompt cond, "How many conditions?"
 	Prompt tStep, "Time interval (min)"
 	Prompt pxSize, "Pixel size (\u03BCm)"
 	Prompt segmentLength, "Segment length (\u03BCm)"
 	DoPrompt/HELP=hstr "Specify", cond, tStep, pxSize, segmentLength
-	
-	if (V_flag) 
+
+	if (V_flag)
 		return -1
 	endif
-	
+
 	Make/O/N=4 paramWave={cond,tStep,pxSize,segmentLength}
 	MakeColorWave(cond,"colorWave")
 	myIO_Panel(cond)
@@ -76,25 +77,25 @@ Function SuperplotWorkflow()
 	SetDataFolder root:
 	// kill all windows and waves before we start
 	CleanSlate()
-	
+
 	Variable cond = 2
 	Variable reps = 4
 	Variable tStep = 20
 	Variable pxSize = 0.22698
 	Variable segmentLength = 25
 	String hstr = "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
-	
+
 	Prompt cond, "How many conditions?"
 	Prompt reps, "How many experiments per condition?"
 	Prompt tStep, "Time interval (min)"
 	Prompt pxSize, "Pixel size (\u03BCm)"
 	Prompt segmentLength, "Segment length (\u03BCm)"
 	DoPrompt/HELP=hstr "Specify", cond, reps, tStep, pxSize, segmentLength
-	
-	if (V_flag) 
+
+	if (V_flag)
 		return -1
 	endif
-	
+
 	Make/O/N=5 paramWave={cond,tStep,pxSize,segmentLength,reps}
 	MakeColorWave(cond,"colorWave")
 	Superplot_Panel(cond,reps)
@@ -110,7 +111,7 @@ Function Migrate()
 		DoAlert 0, "Setup has failed. Missing paramWave."
 		return -1
 	endif
-	
+
 	// pick up global values needed
 	Variable cond = paramWave[0]
 	Variable tStep = paramWave[1]
@@ -134,32 +135,32 @@ Function Migrate()
 	else
 		WAVE/T labelWave = CleanUpCondWave(condWave)
 	endif
-	
+
 	// make summary plot windows
 	String fullList = "cdPlot;ivPlot;ivHPlot;dDPlot;MSDPlot;DAPlot;angleHPlot"
 	Variable nPlots = ItemsInList(fullList)
 	String name
 	Variable i,j
-	
+
 	for(i = 0; i < nPlots; i += 1)
 		name = StringFromList(i, fullList)
 		KillWindow/Z $name
-		Display/N=$name/HIDE=1		
+		Display/N=$name/HIDE=1
 	endfor
-	
+
 	String dataFolderName = "root:data"
 	NewDataFolder/O $dataFolderName // make root:data: but don't put anything in it yet
-	
+
 	String condName, pref
 	Variable moviemax1, moviemax2
-	
+
 	for(i = 0; i < cond; i += 1)
 		if(superPlot == 1)
 			condName = condSplitWave[i]
 		else
 			condName = condWave[i]
 		endif
-		
+
 		// make data folder for each condition
 		dataFolderName = "root:data:" + condName
 		NewDataFolder/O/S $dataFolderName
@@ -199,16 +200,16 @@ Function Migrate()
 			SetDataFolder root:
 		endfor
 	endif
-	
+
 	// make the image quilt, spakline and joint histogram and then sort out the layouts
 	Variable optDur = MakeImageQuilt(10) // this aims for a quilt of 100 = 10^2 tracks
 	MakeJointHistogram(optDur)
 	TidyCondSpecificLayouts()
-	
+
 	KillWindow/Z summaryLayout
 	NewLayout/N=summaryLayout
 	TidyUpSummaryLayout()
-	
+
 	// when we get to the end, print (pragma) version number
 	Print "*** Executed Migrate v", GetProcedureVersion("CellMigration.ipf")
 	KillWindow/Z FilePicker
@@ -218,7 +219,7 @@ End
 /// @param	ii	variable containing row number from condWave
 Function LoadMigration(ii)
 	Variable ii
-	
+
 	WAVE/T/Z condSplitWave = root:condSplitWave
 	WAVE/T/Z condWave = root:condWave
 	String condName
@@ -233,7 +234,7 @@ Function LoadMigration(ii)
 	String fileList
 	Variable moviemax,csvOrNot
 	Variable i
-	
+
 	if(StringMatch(pathString, "*.xls*") == 1)
 		// set variable to indicate Excel Workbook
 		csvOrNot = 0
@@ -249,7 +250,7 @@ Function LoadMigration(ii)
 	endif
 	fileList = SortList(fileList, ";", 16)
 	moviemax = ItemsInList(fileList)
-		
+
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i, fileList)
 		prefix = condName + "_c_" + num2str(i)
@@ -269,10 +270,10 @@ Function LoadMigration(ii)
 		matTrax[0][5,6] = -1
 		// check distances and speeds are correct
 		CheckDistancesAndSpeeds(matTrax)
-	endfor	
-		
+	endfor
+
 	Print "*** Condition", condName, "was loaded from", pathString
-	
+
 	// return moviemax back to calling function for checking
 	return moviemax
 End
@@ -300,11 +301,11 @@ End
 // original data are correct. Currently it just corrects them rather than testing and correcting if needed.
 STATIC Function CheckDistancesAndSpeeds(matTrax)
 	WAVE matTrax
-	
+
 	WAVE/Z paramWave = root:paramWave
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
-	
+
 	// make new distance column
 	Duplicate/O/RMD=[][3,4]/FREE matTrax,tempDist // take offset coords
 	Differentiate/METH=2 tempDist
@@ -323,7 +324,7 @@ End
 ///	@param	ii	variable containing row number from condWave
 Function CorrectMigration(ii)
 	Variable ii
-	
+
 	WAVE/T/Z condSplitWave = root:condSplitWave
 	WAVE/T/Z condWave = root:condWave
 	String condName
@@ -340,12 +341,12 @@ Function CorrectMigration(ii)
 	elseif(numtype(len) == 2)
 		return -1
 	endif
-	
+
 	String sheet, prefix, matName, wList, mName
 	String fileList
 	Variable moviemax,csvOrNot
 	Variable i
-	
+
 	if(StringMatch(pathString, "*.xls*") == 1)
 		// set variable to indicate Excel Workbook
 		csvOrNot = 0
@@ -361,7 +362,7 @@ Function CorrectMigration(ii)
 	endif
 	fileList = SortList(fileList, ";", 16)
 	moviemax = ItemsInList(fileList)
-		
+
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i,fileList)
 		prefix = "stat_" + "c_" + num2str(i)	// use stat prefix
@@ -379,7 +380,7 @@ Function CorrectMigration(ii)
 		Wave matTrax = $mName
 		OffsetAndRecalc(matStat,matTrax)
 	endfor
-	
+
 	Print "*** Offset data for condition", condName, "was loaded from", pathString
 
 	// return moviemax back to calling function for checking
@@ -397,7 +398,7 @@ Function OffsetAndRecalc(matStat,matTrax)
 	MatrixOp/O/FREE mStat2 = col(matStat,2)
 	Variable maxFrame = WaveMax(mStat2)
 	Variable j // because i refers to rows
-	
+
 	// offsetting loop
 	for(j = 1; j < maxFrame + 1; j += 1)
 		FindValue/V=(j) mStat2
@@ -431,26 +432,26 @@ End
 ///	@param	ii	variable containing row number from condWave
 Function MakeTracks(ii)
 	Variable ii
-	
+
 	WAVE/T condWave = root:condWave
 	String condName = condWave[ii]
 	WAVE/Z paramWave = root:paramWave
 	Variable tStep = paramWave[1]
 	Variable pxSize = paramWave[2]
 	WAVE/Z colorWave = root:colorWave
-	
+
 	String wList0 = WaveList(condName + "_*",";","") // find all matrices
 	Variable nWaves = ItemsInList(wList0)
-	
+
 	Variable nTrack,nTrace=0
 	String mName0, newName, plotName, avList, avName, errName
 	Variable i, j
-	
+
 	String layoutName = condName + "_layout"
 	KillWindow/Z $layoutName		// Kill the layout if it exists
-	NewLayout/HIDE=1/N=$layoutName	
+	NewLayout/HIDE=1/N=$layoutName
 
-	// cumulative distance and plot over time	
+	// cumulative distance and plot over time
 	plotName = condName + "_cdplot"
 	KillWindow/Z $plotName	// set up plot
 	Display/N=$plotName/HIDE=1
@@ -493,10 +494,10 @@ Function MakeTracks(ii)
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	SetAxis/W=$plotName/A/N=1 left
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
-	
-	// instantaneous speed over time	
+
+	// instantaneous speed over time
 	plotName = condName + "_ivplot"
 	KillWindow/Z $plotName	// set up plot
 	Display/N=$plotName/HIDE=1
@@ -519,7 +520,7 @@ Function MakeTracks(ii)
 				KillWaves w2
 			else
 				w2[0] = 0	// first point in distance trace is -1, so correct this
-				w2 /= tStep	// make instantaneous speed (units are µm/min)
+				w2 /= tStep	// make instantaneous speed (units are ï¿½m/min)
 				SetScale/P x 0,tStep, w2
 				AppendtoGraph/W=$plotName $newName
 			endif
@@ -537,15 +538,15 @@ Function MakeTracks(ii)
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	SetAxis/W=$plotName/A/N=1 left
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
 	// print a message to say how many valid tracks we have in this condition
 	Print ItemsInList(avList), "valid tracks plotted for", condName
-	
+
 	plotName = condName + "_ivHist"
 	KillWindow/Z $plotName	//set up plot
 	Display/N=$plotName/HIDE=1
-	
+
 	Concatenate/O/NP avList, tempwave
 	newName = "h_iv_" + condName	// note that this makes a name like h_iv_Ctrl
 	Variable bval=ceil(wavemax(tempwave)/(sqrt((3*pxsize)^2)/tStep))
@@ -559,16 +560,16 @@ Function MakeTracks(ii)
 	Label/W=$plotName left "Frequency"
 	Label/W=$plotName bottom "Instantaneous Speed (\u03BCm/min)"
 	KillWaves/Z tempwave
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
-	
+
 	// plot out tracks
 	plotName = condName + "_tkplot"
 	KillWindow/Z $plotName	//set up plot
 	Display/N=$plotName/HIDE=1
-	
+
 	Variable off
-	
+
 	for(i = 0; i < nWaves; i += 1)
 		mName0 = StringFromList(i,wList0)
 		WAVE m0 = $mName0
@@ -576,7 +577,7 @@ Function MakeTracks(ii)
 		Duplicate/O/RMD=[][4,4] m0, $"tYW"	//y pos
 		Duplicate/O/RMD=[][1,1] m0, $"tCellW"	//track number
 		WAVE tXW,tYW,tCellW
-		Redimension/N=-1 tXW,tYW,tCellW		
+		Redimension/N=-1 tXW,tYW,tCellW
 		nTrack = WaveMax(tCellW)	//find maximum track number
 		for(j = 1; j < (nTrack+1); j += 1)	//index is 1-based
 			newName = "tk_" + mName0 + "_" + num2str(j)
@@ -613,19 +614,19 @@ Function MakeTracks(ii)
 	ModifyGraph/W=$plotName mirror=1
 	ModifyGraph/W=$plotName grid=1
 	ModifyGraph/W=$plotName gridRGB=(32767,32767,32767)
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
-	
+
 	// calculate d/D directionality ratio
 	plotName = condName + "_dDplot"
 	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
-	
+
 	String wName0, wName1
 	Variable len
 	wList0 = WaveList("tk_" + condName + "_*", ";","")
 	nWaves = ItemsInList(wList0)
-	
+
 	for(i = 0; i < nWaves; i += 1)
 		wName0 = StringFromList(i,wList0)			// tk wave
 		wName1 = ReplaceString("tk",wName0,"cd")	// cd wave
@@ -649,18 +650,18 @@ Function MakeTracks(ii)
 	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
-	
+
 	// calculate MSD (overlapping method)
 	plotName = condName + "_MSDplot"
 	KillWindow/Z $plotName	//setup plot
 	Display/N=$plotName/HIDE=1
-	
+
 	wList0 = WaveList("tk_" + condName + "_*", ";","")
 	nWaves = ItemsInList(wList0)
 	Variable k
-	
+
 	for(i = 0; i < nWaves; i += 1)
 		wName0 = StringFromList(i,wList0)	// tk wave
 		WAVE w0 = $wName0
@@ -691,14 +692,14 @@ Function MakeTracks(ii)
 	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
-	
+
 	AppendLayoutObject /W=$layoutName graph $plotName
-	
+
 	// calculate direction autocorrelation
 	plotName = condName + "_DAplot"
 	KillWindow/Z $plotName	// setup plot
 	Display/N=$plotName/HIDE=1
-	
+
 	for(i = 0; i < nWaves; i += 1)
 		wName0 = StringFromList(i,wList0)			// tk wave
 		WAVE w0 = $wName0
@@ -735,9 +736,9 @@ Function MakeTracks(ii)
 	Label/W=$plotName bottom "Time (min)"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
-	
+
 	// calculate the angle distribution
 	plotName = condName + "_anglePlot"
 	KillWindow/Z $plotName	// setup plot
@@ -750,11 +751,11 @@ Function MakeTracks(ii)
 	Make/O/D/N=(nSteps) angleWave = NaN
 	// quality filter so that minimal steps are not analysed
 	tempDistThreshW[] = (allTempW[p][5] > 4 * pxSize) ? 1 : 0
-	Variable successVar = 0 
+	Variable successVar = 0
 	// this will find angles for all tracks even short tracks
 	// valid track length has a lower bound of 1 h (v. 1.08)
-	// at tStep = 10 this will find max 4 angles in a track that is not found elsewhere 
-	
+	// at tStep = 10 this will find max 4 angles in a track that is not found elsewhere
+
 	for(i = 0; i < nSteps; i += 1)
 		// find a proper step
 		if(tempDistThreshW[i] == 1)
@@ -775,7 +776,7 @@ Function MakeTracks(ii)
 					successVar = 0
 				endif
 			endfor
-			
+
 			if(successVar == 1)
 				// matrices need transposing
 				MatrixTranspose matAA
@@ -800,50 +801,50 @@ Function MakeTracks(ii)
 	SetAxis/W=$plotName bottom 0,pi
 	Make/O/N=5 axisW = {0,pi/4,pi/2,3*pi/4,pi}
 	// vulgar fractions and pi as Unicode
-	Make/O/N=5/T axisTW = {"0","\u00BD\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
-	ModifyGraph/W=$plotName userticks(bottom)={axisW,axisTW}	
+	Make/O/N=5/T axisTW = {"0","\u00BC\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
+	ModifyGraph/W=$plotName userticks(bottom)={axisW,axisTW}
 	Label/W=$plotName left "Density"
 	Label/W=$plotName bottom "Cell turning"
-	
+
 	AppendLayoutObject/W=$layoutName graph $plotName
 	// print message about number of angles
 	Print numpnts(AngleWave), "valid angles found from all tracks for", condName
-	
+
 	// Plot these averages to summary windows at the end
 	avName = "W_Ave_cd_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=cdPlot $avName
 	ErrorBars/W=cdPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=cdPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	
+
 	avName = "W_Ave_iv_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=ivPlot $avName
 	ErrorBars/W=ivPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=ivPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	
+
 	newName = "h_iv_" + condName
 	AppendToGraph/W=ivHPlot $newName
 	ModifyGraph/W=ivHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	
+
 	avName = "W_Ave_dD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=dDPlot $avName
 	ErrorBars/W=dDPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=dDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-			
+
 	avName = "W_Ave_MSD_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=MSDPlot $avName
 	ErrorBars/W=MSDPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=MSDPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	
+
 	avName = "W_Ave_DA_" + condName
 	errName = ReplaceString("Ave", avName, "Err")
 	AppendToGraph/W=DAPlot $avName
 	ErrorBars/W=DAPlot $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=DAPlot lsize($avName)=2,rgb($avName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
-	
+
 	newName = "h_angle_" + condName
 	AppendToGraph/W=angleHPlot $newName
 	ModifyGraph/W=angleHPlot rgb($newName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
@@ -876,7 +877,7 @@ End
 /// @param qSize	Variable to indicate desired size of image quilt (qSize^2 tracks)
 Function MakeImageQuilt(qSize)
 	Variable qSize
-	
+
 	WAVE/T condWave = root:condWave
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
@@ -884,9 +885,9 @@ Function MakeImageQuilt(qSize)
 	Wave colorWave = root:colorWave
 	String condName, dataFolderName, wName
 	Variable longestCond = 0 , mostFrames = 0
-	
+
 	Variable i
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
@@ -912,12 +913,12 @@ Function MakeImageQuilt(qSize)
 	Variable optQSize = V_maxRowLoc
 	Variable optDur = (V_max / V_maxRowLoc^2) - 1 // because 0-based
 	Print qSize, "x", qSize, "quilt requested.", optQSize, "x", optQSize, "quilt with", optDur, "frames shown (", optDur * tStep, "min)."
-	
+
 	String plotName,sampleWName
 	Variable startVar,endVar,xShift,yShift
 	Variable spaceVar = 100 // this might need changing
 	Variable j,k
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
@@ -1030,16 +1031,16 @@ Function FindSolution()
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
 	String wName
-	
+
 	Variable i
-	
+
 	for(i = 0; i < nWaves; i += 1)
 		wName = StringFromList(i,wList)
 		trackNames[i] = wName
 		Wave w0 = $wName
 		trackDurations[i] = dimsize(w0,0) * tStep
 	endfor
-	
+
 	// how many are longer than x hrs?
 	Variable mostFrames = round(WaveMax(trackDurations) / tStep)
 	Make/O/N=(mostFrames,nWaves) solutionMat
@@ -1055,7 +1056,7 @@ End
 // Second is a bootstrap of 50000 resamples of segValid tracks for optDur randomly oriented
 Function MakeJointHistogram(optDur)
 	Variable optDur
-	
+
 	WAVE/T condWave = root:condWave
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
@@ -1063,9 +1064,9 @@ Function MakeJointHistogram(optDur)
 	Wave colorWave = root:colorWave
 	String condName, dataFolderName, wName, plotName
 	Variable leastValid = 1000
-	
+
 	Variable i,j
-	
+
 	// find lowest number of valid tracks in all conditions
 	// Valid tracks are tracks with a length that could be plotted in the quilt
 	for(i = 0; i < cond; i += 1)
@@ -1075,7 +1076,7 @@ Function MakeJointHistogram(optDur)
 		WAVE segValid
 		leastValid = min(leastValid,numpnts(segValid))
 	endfor
-	
+
 	String sampleWName
 	Variable startVar,endVar
 	Variable furthestPoint,theta
@@ -1088,7 +1089,7 @@ Function MakeJointHistogram(optDur)
 		SetDataFolder datafolderName
 		WAVE/T trackNames
 		WAVE segValid
-		
+
 		// take a random sample of leastValid number of tracks from each condition
 		StatsSample/N=(leastValid) segValid
 		WAVE/Z W_Sampled
@@ -1105,7 +1106,7 @@ Function MakeJointHistogram(optDur)
 			endVar = startVar + optDur - 1
 			bigTk[startVar,endVar][] = tkW0[p-startVar][q]
 		endfor
-		
+
 		// bootstrap leastValid number of tracks from each condition
 		StatsResample/N=(boot) segValid
 		WAVE/Z W_Resampled
@@ -1126,12 +1127,12 @@ Function MakeJointHistogram(optDur)
 			MatrixMultiply tempM0, rotMat
 			WAVE/Z M_Product
 			bigBTk[startVar,endVar][] = M_Product[p-startVar][q]
-		endfor		
+		endfor
 		// find the furthest point in x or y in either direction for all conditions
 		furthestPoint = max(furthestPoint,wavemax(bigBTk),abs(wavemin(bigBTk)))
 		KillWaves/Z W_Sampled,W_Resampled
 	endfor
-	
+
 	// set up the color table and bin waves for joint histograms
 	SetDataFolder root:
 	LoadNiceCTableW()
@@ -1141,7 +1142,7 @@ Function MakeJointHistogram(optDur)
 	Make/O/N=(nBins)/FREE theBinsWave = (p * binSize) - leftTop
 	Variable highestPoint = 0,highestBPoint = 0
 	String JHName,BJHName
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
@@ -1172,7 +1173,7 @@ Function MakeJointHistogram(optDur)
 		String layoutName = condName + "_layout"
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
 		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=21,top($plotName)=21,width($plotName)=261,height($plotName)=261
-		
+
 		// now do BJH
 		WAVE bigBTk
 		Duplicate/O/RMD=[][0] bigBTk,xData
@@ -1195,7 +1196,7 @@ Function MakeJointHistogram(optDur)
 		// now append the BJH
 		AppendLayoutObject/W=$layoutName/PAGE=(2) graph $plotName
 		ModifyLayout/W=$layoutName/PAGE=(2) left($plotName)=291,top($plotName)=21,width($plotName)=261,height($plotName)=261
-		
+
 		KillWaves/Z xData,yData, M_JointHistogram, bigTk,bigBTk
 	endfor
 	// convert highest points to ceil log10 value
@@ -1280,16 +1281,16 @@ Function TidyUpSummaryLayout()
 	ModifyGraph/W=angleHPlot mode=6
 	Make/O/N=5 axisW = {0,pi/4,pi/2,3*pi/4,pi}
 	Make/O/N=5/T axisTW = {"0","\u00BD\u03C0","\u00BD\u03C0","\u00BE\u03C0","\u03C0"}
-	ModifyGraph/W=angleHPlot userticks(bottom)={axisW,axisTW}	
+	ModifyGraph/W=angleHPlot userticks(bottom)={axisW,axisTW}
 	Label/W=angleHPlot left "Density"
 	Label/W=angleHPlot bottom "Cell turning"
 		AppendLayoutObject /W=summaryLayout graph angleHPlot
-	
+
 	// average the speed data and do strava calc from all conditions
 	String wList, speedName, stravaName, wName, condName, datafolderName
 	Variable nTracks, last, mostTracks
 	Variable i, j
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		dataFolderName = "root:data:" + condName
@@ -1310,7 +1311,7 @@ Function TidyUpSummaryLayout()
 		endfor
 		mostTracks = max(mostTracks,nTracks)
 	endfor
-	
+
 	KillWindow/Z SpeedPlot
 	Display/N=SpeedPlot/HIDE=1
 	KillWindow/Z StravaPlot
@@ -1342,7 +1343,7 @@ Function TidyUpSummaryLayout()
 	// add both new plots to summary layout
 	AppendLayoutObject /W=summaryLayout graph SpeedPlot
 	AppendLayoutObject /W=summaryLayout graph StravaPlot
-	
+
 	// now make the superplot
 	// this part is quite long and could move to its own function
 	if(superPlot == 1)
@@ -1396,7 +1397,7 @@ Function TidyUpSummaryLayout()
 				if(inBin == 0)
 					continue
 				endif
-				// yes, then 
+				// yes, then
 				FindValue/I=1 spSum_IntWave
 				if(V_row == -1)
 					continue
@@ -1491,7 +1492,7 @@ Function TidyUpSummaryLayout()
 		AppendLayoutObject /W=summaryLayout graph SuperPlot_cond
 		AppendLayoutObject /W=summaryLayout graph SuperPlot_rep
 	endif
-	
+
 	// finish up by going to root and making sure layout is OK
 	SetDataFolder root:
 	// Tidy summary layout
@@ -1512,7 +1513,7 @@ STATIC Function StravaCalc(w1,segmentLength)
 	Variable maxDist = w1[nPnts-1]
 	Variable returnVar = 1000
 	Variable i
-	
+
 	for(i = 0 ; i < nPnts; i += 1)
 		if(w1[i] + segmentLength > maxDist)
 			break
@@ -1523,17 +1524,17 @@ STATIC Function StravaCalc(w1,segmentLength)
 		endif
 		returnVar = min(returnVar,V_LevelX)
 	endfor
-	
+
 	if(returnVar == 1000)
 		returnVar = NaN
-	endif	
+	endif
 	return returnVar
 End
 
 STATIC Function DoStatsAndLabel(m0,plotName)
 	Wave m0
 	String plotName
-	
+
 	String wName = NameOfWave(m0)
 	Variable groups = DimSize(m0,1)
 	Variable reps = DimSize(m0,0)
@@ -1571,10 +1572,10 @@ end
 
 STATIC Function/S FormatPValue(pValVar)
 	Variable pValVar
-	
+
 	String pVal = ""
 	String preStr,postStr
-	
+
 	if(pValVar > 0.05)
 		sprintf pVal, "%*.*f", 2,2, pValVar
 	else
@@ -1604,14 +1605,14 @@ End
 Function Excel2CSV()
 	SetDataFolder root:
 	NewDataFolder/O/S root:convert
-	
+
 	XLLoadWave/J=1
 	NewPath/O/Q path1, S_path
 	Variable moviemax = ItemsInList(S_value)
 	String sheet,csvFileName,prefix,wList,newName
-	
+
 	Variable i
-	
+
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i,S_Value)
 		csvFileName = S_filename + "_" + sheet + ".csv"
@@ -1640,15 +1641,15 @@ End
 Function CSV2CSV()
 	SetDataFolder root:
 	NewDataFolder/O/S root:convert
-	
+
 	NewPath/O/Q/M="Select directory of original CSVs" ExpDiskFolder
 	NewPath/O/Q/M="Choose destination directory for converted CSVs" outputDiskFolder
 	String fileList = IndexedFile(expDiskFolder,-1,".csv")
 	Variable moviemax = ItemsInList(fileList)
 	String sheet,csvFileName,prefix,newName,wList
-	
+
 	Variable i
-	
+
 	for(i = 0; i < moviemax; i += 1)
 		sheet = StringFromList(i, fileList)
 		prefix = "tempW_" + num2str(i)
@@ -1680,7 +1681,7 @@ End
 ///	@param	cond	number of conditions - determines size of box
 Function myIO_Panel(cond)
 	Variable cond
-	
+
 	Wave/Z colorWave = root:colorWave
 	// make global text wave to store paths
 	Make/T/O/N=(cond) condWave
@@ -1697,7 +1698,7 @@ Function myIO_Panel(cond)
 	// insert rows
 	String buttonName1a,buttonName1b,buttonName2a,buttonName2b,boxName0,boxName1,boxName2
 	Variable i
-	
+
 	for(i = 0; i < cond; i += 1)
 		boxName0 = "box0_" + num2str(i)
 		buttonName1a = "dir1_" + num2str(i)
@@ -1764,12 +1765,12 @@ End
 
 Function DoItButtonProc(ctrlName) : ButtonControl
 	String ctrlName
- 	
+
  	WAVE/T CondWave
 	WAVE/T PathWave1
 	Variable okvar = 0
-	
-	strswitch(ctrlName)	
+
+	strswitch(ctrlName)
 		case "DoIt" :
 			// check CondWave
 			okvar = WaveChecker(CondWave)
@@ -1789,16 +1790,16 @@ Function DoItButtonProc(ctrlName) : ButtonControl
 			else
 				Migrate()
 			endif
-	endswitch	
+	endswitch
 End
 
 STATIC function WaveChecker(TextWaveToCheck)
 	Wave/T TextWaveToCheck
 	Variable nRows = numpnts(TextWaveToCheck)
 	Variable len
-	
+
 	Variable i
-	
+
 	for(i = 0; i < nRows; i += 1)
 		len = strlen(TextWaveToCheck[i])
 		if(len == 0)
@@ -1814,9 +1815,9 @@ STATIC function NameChecker(TextWaveToCheck)
 	Wave/T TextWaveToCheck
 	Variable nRows = numpnts(TextWaveToCheck)
 	Variable len
-	
+
 	Variable i,j
-	
+
 	for(i = 0; i < nRows; i += 1)
 		for(j = 0; j < nRows; j += 1)
 			if(j > i)
@@ -1833,7 +1834,7 @@ End
 ///	@param	reps	number of repitions - determines size of box
 Function Superplot_Panel(cond, reps)
 	Variable cond, reps
-	
+
 	Variable allCond = cond * reps
 	Wave/Z colorWave = root:colorWave
 	// make global text wave to store paths
@@ -1852,7 +1853,7 @@ Function Superplot_Panel(cond, reps)
 	// insert rows
 	String buttonName1a,buttonName1b,buttonName2a,buttonName2b,boxName0,boxName1,boxName2
 	Variable i
-	
+
 	for(i = 0; i < allCond; i += 1)
 		boxName0 = "box0_" + num2str(i)
 		buttonName1a = "dir1_" + num2str(i)
@@ -1885,11 +1886,11 @@ End
 
 Function SPDoItButtonProc(ctrlName) : ButtonControl
 	String ctrlName
- 	
+
  	WAVE/T CondWave, condSplitWave, PathWave1
 	Variable okvar = 0
-	
-	strswitch(ctrlName)	
+
+	strswitch(ctrlName)
 		case "DoIt" :
 			// check MasterCondWave
 			okvar = WaveChecker(CondWave)
@@ -1911,7 +1912,7 @@ Function SPDoItButtonProc(ctrlName) : ButtonControl
 				CondSplitWave[] = CondWave[floor(p / reps)] + "_" + num2str(mod(p,reps) + 1)
 				Migrate()
 			endif
-	endswitch	
+	endswitch
 End
 
 ////////////////////////////////////////////////////////////////////////
@@ -1964,7 +1965,7 @@ Function MakeColorWave(nRow, wName, [alpha])
 	Variable nRow
 	String wName
 	Variable alpha
-	
+
 	// Pick colours from SRON palettes
 	String pal
 	if(nRow == 1)
@@ -1992,7 +1993,7 @@ Function MakeColorWave(nRow, wName, [alpha])
 	else
 		pal = SRON_12
 	endif
-	
+
 	Variable color
 	String colorWaveFullName = "root:" + wName
 	if(ParamisDefault(alpha) == 1)
@@ -2003,9 +2004,9 @@ Function MakeColorWave(nRow, wName, [alpha])
 		WAVE w = $colorWaveFullName
 		w[][3] = alpha
 	endif
-	
+
 	Variable i
-	
+
 	for(i = 0; i < nRow; i += 1)
 		// specify colours
 		color = str2num(StringFromList(mod(i, 12),pal))
@@ -2020,12 +2021,12 @@ STATIC Function CleanSlate()
 	Variable allItems = ItemsInList(fullList)
 	String name
 	Variable i
- 
+
 	for(i = 0; i < allItems; i += 1)
 		name = StringFromList(i, fullList)
-		KillWindow/Z $name		
+		KillWindow/Z $name
 	endfor
-	
+
 	// Kill waves in root
 	KillWaves/A/Z
 	// Look for data folders and kill them
@@ -2033,7 +2034,7 @@ STATIC Function CleanSlate()
 	allItems = CountObjectsDFR(dfr, 4)
 	for(i = 0; i < allItems; i += 1)
 		name = GetIndexedObjNameDFR(dfr, 4, i)
-		KillDataFolder $name		
+		KillDataFolder $name
 	endfor
 End
 
@@ -2042,7 +2043,7 @@ STATIC Function KillTheseWaves(wList)
 	Variable allItems = ItemsInList(wList)
 	String name
 	Variable i
- 
+
 	for(i = 0; i < allItems; i += 1)
 		name = StringFromList(i, wList)
 		KillWaves/Z $name
@@ -2052,14 +2053,8 @@ End
 Function/WAVE CleanUpCondWave(condWave)
 	WAVE/T condWave
 	Duplicate/O condWave, root:labelWave
-	Variable nRows = numpnts(condWave)
-	String nameStr
-	Variable i
-	
-	for(i = 0; i < nRows; i += 1)
-		condWave[i] = CleanupName(condWave[i],0)
-	endfor
-	
+	condWave[] = CleanupName(condWave[p],0)
+
 	return root:labelWave
 End
 
@@ -2081,7 +2076,7 @@ Function TidyCondSpecificLayouts()
 	Variable cond = numpnts(condWave)
 	Variable pgMax = 2
 	Variable i,j
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		layoutName = condName + "_layout"
@@ -2110,12 +2105,12 @@ Function SaveAllReports()
 		DoAlert 0, "No reports to save!"
 		return -1
 	endif
-	
+
 	NewPath/O/Q OutputPath
 	String layoutName,fileName
 	Variable pgMax = 2
 	Variable i,j
-	
+
 	for(i = 0; i < nLayouts; i += 1)
 		layoutName = StringFromList(i,layoutList)
 		pgMax = 2
@@ -2155,7 +2150,7 @@ Function RecolorAllPlots(colorWave,colorSpace)
 	Variable cond = numpnts(condWave)
 
 	Variable i,j,k
-	
+
 	String plotList = "anglePlot;cdPlot;DAplot;dDplot;ivHist;ivPlot;MSDplot;quilt;sprkln;tkplot;"
 	// plots with less than 1 alpha
 	String halfList = "cdPlot;DAplot;dDplot;ivPlot;MSDplot;tkPlot;"
@@ -2163,7 +2158,7 @@ Function RecolorAllPlots(colorWave,colorSpace)
 	Variable nPlots = ItemsInList(plotList)
 	String condName,plotName,traceList,traceName
 	Variable nTraces
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		for(j = 0; j < nPlots; j += 1)
@@ -2178,11 +2173,11 @@ Function RecolorAllPlots(colorWave,colorSpace)
 			endfor
 		endfor
 	endfor
-	
+
 	// now recolor traces with 0.5 alpha
 	plotList = halfList
 	nPlots = ItemsInList(plotList)
-	
+
 	for(i = 0; i < cond; i += 1)
 		condName = condWave[i]
 		for(j = 0; j < nPlots; j += 1)
@@ -2197,10 +2192,10 @@ Function RecolorAllPlots(colorWave,colorSpace)
 			endfor
 		endfor
 	endfor
-	
+
 	plotlist = "angleHPlot;cdPlot;DAPlot;dDplot;ivHPlot;ivPlot;MSDPlot;"
 	nPlots = ItemsInList(plotList)
-	
+
 	for(i = 0; i < nPlots; i += 1)
 		plotName = StringFromList(i,plotList)
 		traceList = TraceNameList(plotName, ";", 1)
@@ -2215,11 +2210,11 @@ Function RecolorAllPlots(colorWave,colorSpace)
 			endfor
 		endfor
 	endfor
-	
+
 	plotlist = "speedPlot;stravaPlot;SuperPlot_cond;"
 	nPlots = ItemsInList(plotList)
 	Variable alphaLevel
-	
+
 	for(i = 0; i < nPlots; i += 1)
 		plotName = StringFromList(i,plotList)
 		traceList = TraceNameList(plotName, ";", 25)
@@ -2244,10 +2239,10 @@ Function RerunAnalysis()
 	Variable allItems = ItemsInList(fullList)
 	String name
 	Variable i
- 
+
 	for(i = 0; i < allItems; i += 1)
 		name = StringFromList(i, fullList)
-		KillWindow/Z $name		
+		KillWindow/Z $name
 	endfor
 
 	KillDataFolder root:data:
@@ -2268,25 +2263,25 @@ End
 /// @param procedureWinTitleStr	This is the name of this procedure window
 Function GetProcedureVersion(procedureWinTitleStr)
 	String procedureWinTitleStr
- 
+
 	// By default, all procedures are version 1.00 unless
 	// otherwise specified.
 	Variable version = 1.00
 	Variable versionIfError = NaN
- 
+
 	String procText = ProcedureText("", 0, procedureWinTitleStr)
 	if (strlen(procText) <= 0)
 		return versionIfError		// Procedure window doesn't exist.
 	endif
- 
+
 	String regExp = "(?i)(?:^#pragma|\\r#pragma)(?:[ \\t]+)version(?:[\ \t]*)=(?:[\ \t]*)([\\d.]*)"
- 
+
 	String versionFoundStr
 	SplitString/E=regExp procText, versionFoundStr
 	if (V_flag == 1)
 		version = str2num(versionFoundStr)
 	endif
-	return version	
+	return version
 End
 
 STATIC Function DecideOpacity(nTrace)
@@ -2305,7 +2300,7 @@ STATIC Function DecideOpacity(nTrace)
 	return alpha
 End
 
-// This function will make a "multicolumn" boxplot or violinplot (Igor >8 only) 
+// This function will make a "multicolumn" boxplot or violinplot (Igor >8 only)
 ///	@param	matA	matrix of points to be appended
 ///	@param	plotName	string to tell igor which graph window to work on
 ///	@param	ii	variable to indicate which condition (for coloring)
@@ -2313,7 +2308,7 @@ STATIC Function BuildBoxOrViolinPlot(matA,plotName,ii)
 	WAVE matA
 	String plotName
 	Variable ii
-	
+
 	String wName = NameOfWave(matA)
 	Wave/T/Z condWave = root:condWave
 	Wave/Z colorWave = root:colorWave
