@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3574118.svg)](https://doi.org/10.5281/zenodo.3574118)
 
-This is a set of functions to load particle tracks and analyse 2D cell migration in Igor.
+Analysis of 2D cell migration in Igor.
 
 [**Examples**](#Examples) | [**Workflow**](#Workflow) | [**Superplots**](#Superplots)
 
@@ -82,14 +82,14 @@ Colours are taken from Paul Tol SRON stylesheet. A maximum of 12 conditions are 
 ![img](img/colorPlot.png?raw=true "image")
 
 ## Superplots
-The main cell migration program is useful for analysing single experiment data or data aggregated from multiple experiments. However, the experimental reproducibibility is useful to examine and this can be done using the Superplot program.
+The main cell migration program is useful for analysing single experiment data or data aggregated from multiple experiments. However, the experimental reproducibibility is useful to examine and this can be done using a [superplot](https://doi.org/10.1083/jcb.202001064).
 
 If you have two conditions and four experimental repeats (eight datasets in total). You can analyse in a few different ways:
 
 - Superplot - respects the experimental repeats and allows comparison of reproducibility. Aggregates data by condition like _CellMigration_ does.
 - CellMigration - analyse the data as an eight-way comparison, or collapse the data before loading for a two-way comparison.
 
-Select CellMigr>Superplot... and specify the number of conditions and experimental repeats (unequal numbers of repeats across conditions are not supported).
+Select CellMigr > Superplot... and specify the number of conditions and experimental repeats (unequal numbers of repeats across conditions are not supported).
 
 ![img](img/sp_specify.png?raw=true "image")
 
@@ -120,3 +120,5 @@ Written for IgorPro 8.
 \* *Superplots:* To analyse conditions, but take into account experimental replications, use the superplot functionality. Here, one directory of CSVs (or Excel workbook) is required for each condition-replication. So for two conditions, with four replications, eight directories/workbooks are required.
 
 \*  *Offsetting:* For offsetting data, a directory of CSVs or workbook per condition is needed with corresponding files or sheets to the primary data. It is important that every frame has a tracked point.
+
+\* *Combining data or combining superplots:* There are a few scenarios where data from different experiments might need to be combined. This can be done using the `CombineSuperPlots.ipf` procedure file. Some examples where combining is required: four imaging experiments with the same conditions but the imaging parameters vary (e.g. different timesteps); Mix n Match: Exps 1 and 2 have conditions X and Y, exps 3 and 4 have X, Y and Z. The procedure will allow you to load all or just X and Y, any combination you like!
