@@ -1,6 +1,6 @@
 # CellMigration
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3574118.svg)](https://doi.org/10.5281/zenodo.3574118)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4850277.svg)](https://doi.org/10.5281/zenodo.4850277)
 
 Analysis of 2D cell migration in Igor.
 
