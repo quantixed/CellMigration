@@ -1,7 +1,7 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3				// Use modern global access method and strict wave access
 #pragma DefaultTab={3,20,4}		// Set default tab width in Igor Pro 9 and later
-#pragma version = 1.14		// version number of Migrate()
+#pragma version = 1.15		// version number of Migrate()
 #pragma ModuleName = CellMigration
 #include <Waves Average>
 #include <ColorWaveEditor>
@@ -56,39 +56,17 @@ Function SetUpMigration(optVar)
 	// kill all windows and waves before we start
 	CleanSlate()
 	
-	Variable cond = 2
-	Variable reps = 4
-	Variable tStep = 20
-	Variable pxSize = 0.22698
-	Variable segmentLength = 25
-	Variable minPoints = 6
-	String hstr = "Segment length is an arbitrary distance the cell can comfortably travel in the experiment."
-	
-	Prompt cond, "How many conditions?"
-	if(optVar == 1)
-		Prompt reps, "How many experiments per condition?"
-	endif
-	Prompt tStep, "Time interval (min)"
-	Prompt pxSize, "Pixel size (\u03BCm)"
-	Prompt segmentLength, "Segment length (\u03BCm)"
-	Prompt minPoints, "Minimum number of points per track"
-	if(optVar == 1)
-		DoPrompt/HELP=hstr "Specify", cond, reps, tStep, pxSize, segmentLength, minPoints
+	SetUp_Panel(optVar)
+End
+
+Function ProceedToMigrate()
+	SetDataFolder root:
+	WAVE/Z paramWave
+	MakeColorWave(paramWave[0],"colorWave")
+	if(paramWave[4] > 0)
+		Superplot_Panel(paramWave[0],paramWave[4])
 	else
-		DoPrompt/HELP=hstr "Specify", cond, tStep, pxSize, segmentLength, minPoints
-	endif
-	
-	if (V_flag) 
-		return -1
-	endif
-	
-	// add parameters to wave - note that if optVar == 0, reps is added at default value but not used
-	Make/O/N=6 paramWave={cond,tStep,pxSize,segmentLength,reps,minPoints}
-	MakeColorWave(cond,"colorWave")
-	if(optVar == 1)
-		Superplot_Panel(cond,reps)
-	else
-		myIO_Panel(cond)
+		myIO_Panel(paramWave[0])
 	endif
 End
 
@@ -432,6 +410,7 @@ Function MakeTracks(ii)
 	Variable pxSize = paramWave[2]
 	Variable minPoints = paramWave[5]
 	WAVE/Z colorWave = root:colorWave
+	WAVE/Z/T unitWave = root:unitWave
 	
 	String wList0 = WaveList(condName + "_*",";","") // find all matrices
 	Variable nWaves = ItemsInList(wList0)
@@ -482,8 +461,8 @@ Function MakeTracks(ii)
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
-	Label/W=$plotName left "Cumulative distance (\u03BCm)"
-	Label/W=$plotName bottom "Time (min)"
+	Label/W=$plotName left "Cumulative distance ("+unitWave[1]+")"
+	Label/W=$plotName bottom "Time ("+unitWave[0]+")"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	SetAxis/W=$plotName/A/N=1 left
@@ -513,7 +492,7 @@ Function MakeTracks(ii)
 				KillWaves w2
 			else
 				w2[0] = 0	// first point in distance trace is -1, so correct this
-				w2 /= tStep	// make instantaneous speed (units are µm/min)
+				w2 /= tStep	// make instantaneous speed
 				SetScale/P x 0,tStep, w2
 				AppendtoGraph/W=$plotName $newName
 			endif
@@ -526,8 +505,8 @@ Function MakeTracks(ii)
 	errName = ReplaceString("Ave", avName, "Err")
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
-	Label/W=$plotName left "Instantaneous Speed (\u03BCm/min)"
-	Label/W=$plotName bottom "Time (min)"
+	Label/W=$plotName left "Instantaneous Speed ("+unitWave[2]+")"
+	Label/W=$plotName bottom "Time ("+unitWave[0]+")"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	SetAxis/W=$plotName/A/N=1 left
@@ -542,16 +521,19 @@ Function MakeTracks(ii)
 	
 	Concatenate/O/NP avList, tempwave
 	newName = "h_iv_" + condName	// note that this makes a name like h_iv_Ctrl
-	Variable bval=ceil(wavemax(tempwave)/(sqrt((3*pxsize)^2)/tStep))
-	Make/O/N=(bval) $newName
-	Histogram/B={0,(sqrt((3*pxsize)^2)/tStep),bVal} tempwave,$newName
+	// before v 1.15 we used sqrt((3*pxsize)^2)/tStep
+	print wavemax(tempwave)
+	Variable nBins = ceil(1 + log(numpnts(tempwave))/log(2))
+	Variable binWidth = wavemax(tempwave)/nBins
+	Make/O/N=(nBins) $newName
+	Histogram/B={0,binWidth,nBins} tempwave,$newName
 	AppendToGraph/W=$plotName $newName
 	ModifyGraph/W=$plotName rgb=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2])
 	ModifyGraph/W=$plotName mode=5,hbFill=4
 	SetAxis/W=$plotName/A/N=1/E=1 left
-	SetAxis/W=$plotName bottom 0,2
+	SetAxis/W=$plotName/A/N=1/E=1 bottom
 	Label/W=$plotName left "Frequency"
-	Label/W=$plotName bottom "Instantaneous Speed (\u03BCm/min)"
+	Label/W=$plotName bottom "Instantaneous Speed ("+unitWave[2]+")"
 	KillWaves/Z tempwave
 	
 	AppendLayoutObject/W=$layoutName graph $plotName
@@ -640,7 +622,7 @@ Function MakeTracks(ii)
 	fWaveAverage(avList, "", 3, 1, avName, errName)
 	AppendToGraph/W=$plotName $avName
 	Label/W=$plotName left "Directionality ratio (d/D)"
-	Label/W=$plotName bottom "Time (min)"
+	Label/W=$plotName bottom "Time ("+unitWave[0]+")"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($ErrName,$ErrName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -682,7 +664,7 @@ Function MakeTracks(ii)
 	len = numpnts($avName)*tStep
 	SetAxis/W=$plotName bottom tStep,(len/2)
 	Label/W=$plotName left "MSD"
-	Label/W=$plotName bottom "Time (min)"
+	Label/W=$plotName bottom "Time ("+unitWave[0]+")"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -726,7 +708,7 @@ Function MakeTracks(ii)
 	AppendToGraph/W=$plotName $avName
 	SetAxis/W=$plotName left -1,1
 	Label/W=$plotName left "Direction autocorrelation"
-	Label/W=$plotName bottom "Time (min)"
+	Label/W=$plotName bottom "Time ("+unitWave[0]+")"
 	ErrorBars/W=$plotName $avName SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=($errName,$errName)
 	ModifyGraph/W=$plotName lsize($avName)=2,rgb($avName)=(0,0,0)
 	
@@ -746,7 +728,7 @@ Function MakeTracks(ii)
 	tempDistThreshW[] = (allTempW[p][5] > 4 * pxSize) ? 1 : 0
 	Variable successVar = 0 
 	// this will find angles for all tracks even short tracks
-	// valid track length has a lower bound of 6 points (v. 1.15)
+	// valid track length has a lower bound defined by user, minimum is 6 points (v. 1.15)
 	// at tStep = 10 this will find max 4 angles in a track that is not found elsewhere 
 	
 	for(i = 0; i < nSteps; i += 1)
@@ -848,22 +830,32 @@ End
 STATIC Function RescalePlotsToLimits(plotString,limitVar)
 	String plotString
 	Variable limitVar
-	// we set a temporary limit of -250,250 to all tkPlots
-	if(limitVar > 250)
-		limitVar = ceil(limitVar / 50) * 50
-		String plotList = WinList(plotString,";","WIN:1")
-		String plotName
-		Variable i
-		for(i = 0; i < ItemsInList(plotList); i += 1)
-			plotName = StringFromList(i,plotList)
-			SetAxis/W=$plotName left -limitVar,limitVar
-			SetAxis/W=$plotName/Z bottom -limitVar,limitVar
-			SetAxis/W=$plotName/Z top -limitVar,limitVar
-		endfor
-		return 1
+	// previously a temporary limit of -250,250 was set to all tkPlots and then expanded here if necessary
+	// as of v 1.15, we just use the furthest point
+	if(limitVar > 1000)
+		limitVar = ceil(limitVar / 100) * 100
+	elseif(limitVar >= 10 && limitVar < 100)
+		limitVar = ceil(limitVar / 10) * 10
+	elseif(limitVar >= 1 && limitVar < 10)
+		limitVar = ceil(limitVar / 1) * 1
+	elseif(limitVar >= 0.1 && limitVar < 1)
+		limitVar = ceil(limitVar / 0.1) * 0.1
+	elseif(limitVar < 0.1)
+		limitVar = limitVar
 	else
-		return 0
+		limitVar = ceil(limitVar / 50) * 50 // we expect values of 150-300
 	endif
+	String plotList = WinList(plotString,";","WIN:1")
+	String plotName
+	Variable i
+	for(i = 0; i < ItemsInList(plotList); i += 1)
+		plotName = StringFromList(i,plotList)
+		SetAxis/W=$plotName left -limitVar,limitVar
+		SetAxis/W=$plotName/Z bottom -limitVar,limitVar
+		SetAxis/W=$plotName/Z top -limitVar,limitVar
+	endfor
+	
+	return 1
 End
 
 // This function will make ImageQuilts and sparklines of 2D tracks for all conditions
@@ -875,6 +867,7 @@ Function MakeImageQuilt(qSize)
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
 	Wave colorWave = root:colorWave
 	String condName, dataFolderName, wName
 	Variable longestCond = 0 , mostFrames = 0
@@ -909,7 +902,7 @@ Function MakeImageQuilt(qSize)
 	
 	String plotName,sampleWName
 	Variable startVar,endVar,xShift,yShift
-	Variable spaceVar = 100 // this might need changing
+	Variable spaceVar = WorkOutSpacing(pxSize)
 	Variable j,k
 	
 	for(i = 0; i < cond; i += 1)
@@ -957,7 +950,7 @@ Function MakeImageQuilt(qSize)
 		SetAxis/W=$plotName left (optQsize+1.5) * spaceVar,-2.5*spaceVar
 		SetAxis/W=$plotName bottom -2.5*spaceVar,(optQsize+1.5) * spaceVar
 		ModifyGraph/W=$plotName width={Aspect,1}
-		ModifyGraph/W=$plotName manTick={0,100,0,0},manMinor={0,0}
+		ModifyGraph/W=$plotName manTick={0,spaceVar,0,0},manMinor={0,0}
 		ModifyGraph/W=$plotName noLabel=2,mirror=1,standoff=0,tick=3
 		ModifyGraph/W=$plotName grid=1,gridRGB=(34952,34952,34952)
 		ModifyGraph axRGB=(65535,65535,65535)
@@ -998,7 +991,7 @@ Function MakeImageQuilt(qSize)
 		SetAxis/W=$plotName left 0.75 * spaceVar,-2.5*spaceVar
 		SetAxis/W=$plotName bottom -0.5*spaceVar,(optQsize+0.5) * spaceVar
 		ModifyGraph/W=$plotName width={Plan,1,bottom,left}
-		ModifyGraph/W=$plotName manTick={0,100,0,0},manMinor={0,0}
+		ModifyGraph/W=$plotName manTick={0,spaceVar,0,0},manMinor={0,0}
 		ModifyGraph/W=$plotName noLabel=2,mirror=1,standoff=0,tick=3
 		ModifyGraph/W=$plotName grid=1,gridRGB=(34952,34952,34952)
 		ModifyGraph axRGB=(65535,65535,65535)
@@ -1031,7 +1024,7 @@ Function FindSolution()
 		wName = StringFromList(i,wList)
 		trackNames[i] = wName
 		Wave w0 = $wName
-		trackDurations[i] = dimsize(w0,0) * tStep
+		trackDurations[i] = (dimsize(w0,0) - 1) * tStep
 	endfor
 	
 	// how many are longer than x hrs?
@@ -1054,6 +1047,7 @@ Function MakeJointHistogram(optDur)
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
+	Variable pxSize = paramWave[2]
 	Wave colorWave = root:colorWave
 	String condName, dataFolderName, wName, plotName
 	Variable leastValid = 1000
@@ -1129,9 +1123,10 @@ Function MakeJointHistogram(optDur)
 	// set up the color table and bin waves for joint histograms
 	SetDataFolder root:
 	LoadNiceCTableW()
-	Variable binSize = 5
-	Variable leftTop = (25 * (ceil(furthestPoint / 25) + 1)) + (binSize / 2)
-	Variable nBins = (25 * (((ceil(furthestPoint / 25) + 1) * 2)) / binSize) + 2
+	// we'll use a reduction factor of 20
+	Variable binSize = 20 * pxSize
+	Variable leftTop = (binSize^2 * (ceil(furthestPoint / binsize^2) + 1)) + (binSize / 2)
+	Variable nBins = (binsize^2 * (((ceil(furthestPoint / binsize^2) + 1) * 2)) / binSize) + 2
 	Make/O/N=(nBins)/FREE theBinsWave = (p * binSize) - leftTop
 	Variable highestPoint = 0,highestBPoint = 0
 	String JHName,BJHName
@@ -1222,13 +1217,14 @@ End
 // and add some summary graphs
 Function TidyUpSummaryLayout()
 	SetDataFolder root:
-	WAVE/T condWave = root:condWave
+	WAVE/Z/T condWave = root:condWave
 	Variable cond = numpnts(condWave)
 	Wave paramWave = root:paramWave
 	Variable tStep = paramWave[1]
 	Variable segmentLength = paramWave[3]
 	Wave colorWave = root:colorWave
-	WAVE/T labelWave = root:labelWave
+	WAVE/Z/T labelWave = root:labelWave
+	WAVE/Z/T unitWave = root:unitWave
 	// will we make a superplot?
 	WAVE/T/Z condSplitWave = root:condSplitWave
 	Variable superPlot
@@ -1240,34 +1236,34 @@ Function TidyUpSummaryLayout()
 
 	// Tidy up summary windows
 	SetAxis/W=cdPlot/A/N=1 left
-	Label/W=cdPlot left "Cumulative distance (\u03BCm)"
-	Label/W=cdPlot bottom "Time (min)"
+	Label/W=cdPlot left "Cumulative distance ("+unitWave[1]+")"
+	Label/W=cdPlot bottom "Time ("+unitWave[0]+")"
 		AppendLayoutObject /W=summaryLayout graph cdPlot
 	SetAxis/W=ivPlot/A/N=1 left
-	Label/W=ivPlot left "Instantaneous Speed (\u03BCm/min)"
-	Label/W=ivPlot bottom "Time (min)"
+	Label/W=ivPlot left "Instantaneous Speed ("+unitWave[2]+")"
+	Label/W=ivPlot bottom "Time ("+unitWave[0]+")"
 		AppendLayoutObject /W=summaryLayout graph ivPlot
-	SetAxis/W=ivHPlot/A/N=1 left
-	SetAxis/W=ivHPlot bottom 0,2
+	SetAxis/W=ivHPlot/A/N=1/E=1 left
+	SetAxis/W=ivHPlot/A/N=1/E=1 bottom
 	Label/W=ivHPlot left "Frequency"
-	Label/W=ivHPlot bottom "Instantaneous Speed (\u03BCm/min)"
+	Label/W=ivHPlot bottom "Instantaneous Speed ("+unitWave[2]+")"
 	ModifyGraph/W=ivHPlot mode=6
 		AppendLayoutObject /W=summaryLayout graph ivHPlot
 	Label/W=dDPlot left "Directionality ratio (d/D)"
-	Label/W=dDPlot bottom "Time (min)"
+	Label/W=dDPlot bottom "Time ("+unitWave[0]+")"
 		AppendLayoutObject /W=summaryLayout graph dDPlot
 	ModifyGraph/W=MSDPlot log=1
 	SetAxis/W=MSDPlot/A/N=1 left
 	Wave w = WaveRefIndexed("MSDPlot",0,1)
 	SetAxis/W=MSDPlot bottom tStep,((numpnts(w) * tStep)/2)
 	Label/W=MSDPlot left "MSD"
-	Label/W=MSDPlot bottom "Time (min)"
+	Label/W=MSDPlot bottom "Time ("+unitWave[0]+")"
 		AppendLayoutObject /W=summaryLayout graph MSDPlot
 	SetAxis/W=DAPlot left 0,1
 	Wave w = WaveRefIndexed("DAPlot",0,1)
 	SetAxis/W=DAPlot bottom 0,((numpnts(w)*tStep)/2)
 	Label/W=DAPlot left "Direction autocorrelation"
-	Label/W=DAPlot bottom "Time (min)"
+	Label/W=DAPlot bottom "Time ("+unitWave[0]+")"
 		AppendLayoutObject /W=summaryLayout graph DAPlot
 	SetAxis/W=angleHPlot/A/N=1/E=1 left
 	SetAxis/W=angleHPlot bottom 0,pi
@@ -1281,7 +1277,7 @@ Function TidyUpSummaryLayout()
 	
 	// average the speed data and do strava calc from all conditions
 	String wList, speedName, stravaName, wName, condName, datafolderName
-	Variable nTracks, last, mostTracks
+	Variable nTracks, last, mostTracks, stravaOK
 	Variable i, j
 	
 	for(i = 0; i < cond; i += 1)
@@ -1302,6 +1298,7 @@ Function TidyUpSummaryLayout()
 			speedW[j] = w1[last]/(last*tStep)	// calculates speed
 			stravaW[j] = StravaCalc(w1,segmentLength)
 		endfor
+		stravaOK += checkStravaW(stravaW)
 		mostTracks = max(mostTracks,nTracks)
 	endfor
 	
@@ -1315,27 +1312,33 @@ Function TidyUpSummaryLayout()
 		dataFolderName = "root:data:" + condName
 		SetDataFolder $dataFolderName
 		speedName = "sum_Speed_" + condName
-		stravaName = "sum_Strava_" + condName
 		Wave speedW = $speedName
-		Wave stravaW = $stravaName
 		Make/O/N=(mostTracks,cond) $(ReplaceString("sum_S",speedName,"sum_MatS"))=NaN
-		Make/O/N=(mostTracks,cond) $(ReplaceString("sum_S",stravaName,"sum_MatS"))=NaN
 		Wave sum_MatSpeed = $(ReplaceString("sum_S",speedName,"sum_MatS"))
-		Wave sum_MatStrava = $(ReplaceString("sum_S",stravaName,"sum_MatS"))
 		sum_MatSpeed[0,numpnts(speedW)-1][i] = speedW[p]
-		sum_MatStrava[0,numpnts(stravaW)-1][i] = stravaW[p]
+		stravaName = "sum_Strava_" + condName
 		BuildBoxOrViolinPlot(sum_MatSpeed,"SpeedPlot",i)
-		BuildBoxOrViolinPlot(sum_MatStrava,"StravaPlot", i)
+		if(stravaOK == cond)
+			Wave stravaW = $stravaName
+			Make/O/N=(mostTracks,cond) $(ReplaceString("sum_S",stravaName,"sum_MatS"))=NaN
+			Wave sum_MatStrava = $(ReplaceString("sum_S",stravaName,"sum_MatS"))
+			sum_MatStrava[0,numpnts(stravaW)-1][i] = stravaW[p]
+			BuildBoxOrViolinPlot(sum_MatStrava,"StravaPlot", i)
+		endif
 	endfor
-	Label/W=SpeedPlot left "Average speed (\u03BCm/min)"
+	Label/W=SpeedPlot left "Average speed ("+unitWave[2]+")"
 	SetAxis/A/N=1/E=1/W=SpeedPlot left
 	ModifyGraph/W=SpeedPlot toMode=-1
-	Label/W=StravaPlot left "Fastest "+ num2str(segmentLength) + " \u03BCm (min)"
-	SetAxis/A/N=1/E=1/W=StravaPlot left
-	ModifyGraph/W=StravaPlot toMode=-1
-	// add both new plots to summary layout
 	AppendLayoutObject /W=summaryLayout graph SpeedPlot
-	AppendLayoutObject /W=summaryLayout graph StravaPlot
+	
+	if(stravaOK == cond)
+		Label/W=StravaPlot left "Fastest "+ num2str(segmentLength) + " "+unitWave[1]+" ("+unitWave[0]+")"
+		SetAxis/A/N=1/E=1/W=StravaPlot left
+		ModifyGraph/W=StravaPlot toMode=-1
+		AppendLayoutObject /W=summaryLayout graph StravaPlot
+	else
+		KillWindow/Z StravaPlot
+	endif
 	
 	// now make the superplot
 	// this part is quite long and could move to its own function
@@ -1469,13 +1472,13 @@ Function TidyUpSummaryLayout()
 			ModifyGraph/W=SuperPlot_rep mode($aveName)=3,marker($aveName)=19,useMrkStrokeRGB($aveName)=1
 			SetDataFolder root:
 		endfor
-		Label/W=SuperPlot_cond left "Average speed (\u03BCm/min)"
+		Label/W=SuperPlot_cond left "Average speed ("+unitWave[2]+")"
 		SetAxis/A/N=1/E=1/W=SuperPlot_cond left
 		Make/O/N=(numpnts(labelWave)) labelXWave = p
 		ModifyGraph/W=SuperPlot_cond userticks(bottom)={labelXWave,labelWave}
 		SetAxis/W=SuperPlot_cond bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
 
-		Label/W=SuperPlot_rep left "Average speed (\u03BCm/min)"
+		Label/W=SuperPlot_rep left "Average speed ("+unitWave[2]+")"
 		SetAxis/A/N=1/E=1/W=SuperPlot_rep left
 		ModifyGraph/W=SuperPlot_rep userticks(bottom)={labelXWave,labelWave}
 		SetAxis/W=SuperPlot_rep bottom WaveMin(labelXWave) - 0.5, WaveMax(labelXWave) + 0.5
@@ -1671,6 +1674,109 @@ End
 ////////////////////////////////////////////////////////////////////////
 // Panel functions
 ///////////////////////////////////////////////////////////////////////
+
+Function SetUp_Panel(optVar)
+	Variable optVar
+	
+	// suggested values
+	Variable cond = 2
+	Variable reps = 0
+	if(optVar == 1)
+		reps = 4
+	endif
+	Variable tStep = 20
+	Variable pxSize = 0.22698
+	Variable segmentLength = 25
+	Variable minPoints = 6
+	// add parameters to wave - note that if optVar == 0, reps is added as 0 so that we can determine that we are not superplotting
+	Make/O/D/N=6 paramWave = {cond,tStep,pxSize,segmentLength,reps,minPoints}
+	
+	String panelName = "su_panel"
+	KillWindow/Z $panelName
+	NewPanel/N=$panelName/K=1/W=(40,40,540,380) as "Prepare for analysis"
+	DefaultGUIFont/W=$panelName/Mac popup={"_IgorSmall",0,0}
+	// controls
+	String titleString = "Specify parameters for CellMigration"
+	if(optVar == 1)
+		titleString = "Specify parameters for CellMigration Superplot"
+	endif
+	TitleBox tb0,pos={20,20},size={115,20},title=titleString,fstyle=1,fsize=11,labelBack=(55000,55000,65000),frame=0
+
+	SetVariable setvar0,pos={20,60},size={220,16},title="How many conditions?",fSize=10,limits={1,inf,1},value=paramWave[0]
+	if(optVar == 1)
+		SetVariable setvar4,pos={250,60},size={220,16},title="How many repeats per condition?",fSize=10,limits={1,inf,1},value=paramWave[4]
+	endif
+	SetVariable setvar1,pos={20,100},size={220,16},title="Time interval",fSize=10,limits={0.001,999,0},value=paramWave[1]
+	SetVariable setvar2,pos={20,140},size={220,16},title="Pixel size",fSize=10,limits={0.0001,999,0},value=paramWave[2]
+	SetVariable setvar3,pos={20,180},size={220,16},title="Segment length",fSize=10,limits={0.0001,999,0},value=paramWave[3]
+	SetVariable setvar5,pos={20,220},size={220,16},title="Minimum number of points per track",fSize=10,limits={4,100,1},value=paramWave[5]
+	
+	// define units
+	String timeList = "h;min;s;ms;"
+	String puTime = "\""+timeList+"\""
+	String presetTime = StringFromList(1,timeList)
+	Variable timeMode = 1 + WhichListItem(presetTime,timeList) // complicated
+	PopUpMenu pu0,pos={250,100},size={90,14}, bodywidth=90,value= #puTime, popvalue = presetTime, mode=timeMode, proc=unitPopupHelper
+	String distList = "m;mm;\u03BCm;nm;"
+	String puDist = "\""+distList+"\""
+	String presetDist = StringFromList(2,distList)
+	Variable distMode = 1 + WhichListItem(presetDist,distList) // complicated
+	PopUpMenu pu1,pos={250,140},size={90,14}, bodywidth=90,value= #puDist, popvalue = presetDist, mode=distMode, proc=unitPopupHelper
+	// we need a unitwave to store units
+	Make/O/N=3/T unitWave = {presetTime,presetDist,presetDist+"/"+presetTime}
+	// display speed
+	SetVariable noEdit,pos={272,260},size={208,16},title="Speed will be displayed as",fSize=11,value=unitWave[2],disable=2
+	// display units for segment length
+	SetVariable noEdit2,pos={250,180},size={40,16},title=" ",fSize=11,value=unitWave[1],disable=2
+	
+	// the buttons
+	Button Cancel,pos={260,300},size={100,20},proc=SUButtonProc,title="Cancel"
+	Button Next,pos={380,300},size={100,20},proc=SUButtonProc,title="Next"
+End
+
+Function unitPopupHelper(s) : PopupMenuControl
+	STRUCT WMPopupAction &s
+
+	switch (s.eventCode)
+		case 2: // mouse up
+			String name = s.ctrlName
+			Variable rownum = str2num(name[2,inf])  // assumes the format to be pux where x is the row
+			Variable sel = s.popNum-1	// 1-6 (popup) vs. 0-5 (wave)
+			String popStr = s.popStr
+		
+			WAVE/Z/T unitWave
+			unitWave[rowNum] = popStr
+			unitWave[2] = unitWave[1]+"/"+unitWave[0]
+			break
+		case -1:
+			break
+	endswitch
+	
+	return 0
+End
+
+
+Function SUButtonProc(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+	
+	switch(ba.eventCode)
+		case 2 :
+			if(CmpStr(ba.ctrlName,"Next") == 0)
+				KillWindow/Z $(ba.win)
+				ProceedToMigrate()
+				return 0
+			else
+				KillWindow/Z $(ba.win)
+				return -1
+			endif
+		case -1:
+			break
+	endswitch
+	
+	return 0
+End
+
+
 ///	@param	cond	number of conditions - determines size of box
 Function myIO_Panel(cond)
 	Variable cond
@@ -2318,6 +2424,29 @@ STATIC Function BuildBoxOrViolinPlot(matA,plotName,ii)
 	endif
 	Variable alphaLevel = DecideOpacity(nTracks)
 	ModifyGraph/W=$plotName rgb($wName)=(colorWave[ii][0],colorWave[ii][1],colorWave[ii][2],alphaLevel)
+End
+
+STATIC Function CheckStravaW(w)
+	Wave w
+	Duplicate/FREE w, tempW
+	WaveTransform zapnans tempW
+	if(numpnts(tempW) == 0)
+		return 0
+	else
+		return 1
+	endif
+End
+
+STATIC Function WorkOutSpacing(px)
+	Variable px
+	Variable spacing
+	if (px < 1)
+		spacing = 10^floor(log(200 * px))
+	else
+		spacing = 10^ceil(log(200 * px))
+	endif
+	
+	return spacing
 End
 
 // not currently used
